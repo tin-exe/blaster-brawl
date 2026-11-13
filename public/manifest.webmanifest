@@ -1,0 +1,16 @@
+{
+  "name": "BLASTER BRAWL",
+  "short_name": "BLASTER BRAWL",
+  "description": "An original cartoon ring-out showdown.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "landscape",
+  "background_color": "#162039",
+  "theme_color": "#83d9f3",
+  "icons": [
+    { "src": "/icons/blaster-icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/blaster-icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/blaster-icon-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

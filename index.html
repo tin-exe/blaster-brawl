@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
+    <meta name="theme-color" content="#83d9f3" />
+    <meta name="description" content="BLASTER BRAWL — an original cartoon ring-out showdown." />
+    <title>BLASTER BRAWL</title>
+    <link rel="icon" type="image/svg+xml" href="/blaster-brawl-logo.svg" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <link rel="apple-touch-icon" href="/icons/blaster-icon-192.png" />
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <main id="app" aria-label="BLASTER BRAWL game">
+      <canvas id="game" aria-label="BLASTER BRAWL game canvas. Use arrow keys to navigate menus and A and D to move." tabindex="0"></canvas>
+      <nav id="utility-controls" aria-label="Game settings">
+        <button id="mute-toggle" type="button" aria-pressed="false" aria-label="Mute sound">SOUND ON</button>
+        <button id="fullscreen-toggle" type="button" aria-label="Enter fullscreen">FULLSCREEN</button>
+      </nav>
+      <section id="touch-controls" aria-label="Touch game controls" hidden>
+        <div id="touch-left" class="touch-zone">
+          <button id="joystick-pad" class="touch-button joystick" type="button" data-touch-action="joystick" aria-label="Move left or right"><span></span></button>
+        </div>
+        <div id="touch-right" class="touch-zone">
+          <button class="touch-button touch-action jump" type="button" data-touch-action="jump" aria-label="Jump">JUMP</button>
+          <button class="touch-button touch-action shoot" type="button" data-touch-action="shoot" aria-label="Shoot">SHOOT</button>
+          <button class="touch-button touch-action switch" type="button" data-touch-action="switch" aria-label="Switch weapon">SWAP</button>
+          <button class="touch-button touch-action pause" type="button" data-touch-action="pause" aria-label="Pause or resume">Ⅱ</button>
+        </div>
+      </section>
+      <div id="rotate-overlay" role="status" aria-live="polite" hidden>
+        <div class="rotate-card"><strong>ROTATE YOUR DEVICE</strong><span>BLASTER BRAWL plays best in landscape.</span></div>
+      </div>
+      <div id="loading" role="status" aria-live="polite">
+        <div class="loader-brand">BLASTER <span>BRAWL</span></div>
+        <progress id="loading-progress" max="100" value="0" aria-label="Loading game"></progress>
+        <p id="loading-label">TUNING THE TURBO...</p>
+      </div>
+      <div id="error-screen" role="alert" hidden>
+        <strong>OOPS! THE ARENA NEEDS A QUICK RESET.</strong>
+        <p id="error-message">The game ran into a hiccup.</p>
+        <button id="reload-game" type="button">RELOAD GAME</button>
+      </div>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
