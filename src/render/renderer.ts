@@ -1,11 +1,11 @@
-import { CONFIG } from '../config';
+import { CONFIG, SCENE } from '../config';
 import type { Fighter, HatStyle, Particle, Projectile } from '../types';
 import type { MatchScene } from '../scenes/match';
 import type { GameSettings } from '../storage/settings';
 import { matchModeLabel } from '../game/match-config';
 import type { MatchConfig, MarkerShape } from '../types';
 
-export type ScreenMode = 'menu' | 'options' | 'custom' | 'match' | 'result';
+export type ScreenMode = (typeof SCENE)[keyof typeof SCENE];
 
 export interface RenderState {
   screen: ScreenMode;
@@ -13,7 +13,7 @@ export interface RenderState {
   settings: GameSettings;
   menuIndex: number;
   optionsIndex: number;
-  resultIndex: number;
+  gameOverIndex: number;
   pauseIndex: number;
   paused: boolean;
   elapsed: number;
@@ -628,7 +628,7 @@ function drawPause(ctx: CanvasRenderingContext2D, state: RenderState): void {
   ctx.fillRect(0, 0, CONFIG.canvas.width, CONFIG.canvas.height);
   panel(ctx, 302, 151, 356, 252, 'rgba(22,31,50,0.97)');
   text(ctx, CONFIG.copy.paused, CONFIG.canvas.width * 0.5, 197, 34, '#ffe16b', 'center', 6, 1000);
-  const items = ['RESUME', 'RESTART MATCH', 'MAIN MENU'];
+  const items = CONFIG.scene.pauseActions;
   for (let i = 0; i < items.length; i += 1) {
     const y = 260 + i * 42;
     if (i === state.pauseIndex) text(ctx, '▶', 367, y, 15, '#ff806c', 'center', 2, 1000);
@@ -637,7 +637,7 @@ function drawPause(ctx: CanvasRenderingContext2D, state: RenderState): void {
   text(ctx, 'ESC RESUMES', CONFIG.canvas.width * 0.5, 379, 11, '#c7d3df', 'center', 3, 800);
 }
 
-function drawResult(ctx: CanvasRenderingContext2D, state: RenderState): void {
+function drawGameOver(ctx: CanvasRenderingContext2D, state: RenderState): void {
   const winner = state.match?.winnerFighter ?? null;
   const won = winner?.playerSlot === 1;
   const winnerName = winner?.displayName.toUpperCase() ?? 'NO WINNER';
@@ -657,22 +657,22 @@ function drawResult(ctx: CanvasRenderingContext2D, state: RenderState): void {
     return `${index + 1}. ${fighter?.displayName.toUpperCase() ?? 'FIGHTER'}`;
   }).join('  ·  ');
   if (order) text(ctx, `OUT ORDER: ${order}`, CONFIG.canvas.width * 0.5, 289, 10, '#dce6ec', 'center', 2, 850);
-  const items = ['REPLAY', 'BACK TO MENU'];
+  const items = CONFIG.scene.gameOverActions;
   for (let i = 0; i < items.length; i += 1) {
     const y = 333 + i * 42;
-    if (i === state.resultIndex) text(ctx, '▶', 361, y, 15, '#ff806c', 'center', 2, 1000);
+    if (i === state.gameOverIndex) text(ctx, '▶', 361, y, 15, '#ff806c', 'center', 2, 1000);
     text(ctx, items[i] ?? '', 388, y, 20, '#fff', 'left', 4, 950);
   }
 }
 
 export function renderGame(ctx: CanvasRenderingContext2D, state: RenderState): void {
   ctx.save();
-  const shake = state.screen === 'match' && !state.paused ? state.match?.shake ?? 0 : 0;
+  const shake = state.screen === SCENE.GAME && !state.paused ? state.match?.shake ?? 0 : 0;
   if (shake > 0) ctx.translate((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake);
   const cameraX = state.match?.cameraX ?? 0;
   drawBackdrop(ctx, cameraX, state.elapsed, state.lowQuality);
   drawWorld(ctx, cameraX);
-  if (state.match && (state.screen === 'match' || state.screen === 'result')) {
+  if (state.match && (state.screen === SCENE.GAME || state.screen === SCENE.GAME_OVER)) {
     drawHud(ctx, state.match, state.touchMode);
   } else {
     const match = state.match;
@@ -683,12 +683,12 @@ export function renderGame(ctx: CanvasRenderingContext2D, state: RenderState): v
       ctx.restore();
     }
   }
-  if (state.screen === 'menu') drawMenu(ctx, state);
-  else if (state.screen === 'options') drawOptions(ctx, state);
-  else if (state.screen === 'custom') drawCustomGame(ctx, state);
-  else if (state.screen === 'match' && state.paused) drawPause(ctx, state);
-  else if (state.screen === 'result') drawResult(ctx, state);
-  if (state.toastTimer > 0 && state.toast && state.screen !== 'match') {
+  if (state.screen === SCENE.MENU) drawMenu(ctx, state);
+  else if (state.screen === SCENE.OPTIONS) drawOptions(ctx, state);
+  else if (state.screen === SCENE.CUSTOM) drawCustomGame(ctx, state);
+  else if (state.screen === SCENE.GAME && state.paused) drawPause(ctx, state);
+  else if (state.screen === SCENE.GAME_OVER) drawGameOver(ctx, state);
+  if (state.toastTimer > 0 && state.toast && state.screen !== SCENE.GAME) {
     panel(ctx, CONFIG.canvas.width * 0.5 - 190, 29, 380, 45, 'rgba(255,225,107,0.92)');
     text(ctx, state.toast, CONFIG.canvas.width * 0.5, 52, 14, INK, 'center', 2, 950);
   }

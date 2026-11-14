@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { AudioManager } from '../audio/audio';
-import { CONFIG } from '../config';
+import { CONFIG, SCENE_EVENTS } from '../config';
 import { createMatchConfig } from '../game/match-config';
 import { defaultSettings } from '../storage/settings';
 import type { InputFrame, MatchConfig } from '../types';
@@ -78,6 +78,8 @@ describe('match roster and round lifecycle', () => {
 
   it('ends the round when the last stock is lost', () => {
     const match = makeMatch();
+    let eventWinner = '';
+    match.events.once(SCENE_EVENTS.GAME_OVER, (winner) => { eventWinner = winner ?? ''; });
     match.human.invulnerable = 10;
     match.bot.stocks = 1;
     match.bot.y = CONFIG.world.killY + 1;
@@ -85,6 +87,19 @@ describe('match roster and round lifecycle', () => {
     expect(match.bot.stocks).toBe(0);
     expect(match.finished).toBe(true);
     expect(match.winner).toBe('human');
+    expect(eventWinner).toBe('human');
+  });
+
+  it('cleans up scene listeners on shutdown', () => {
+    const match = makeMatch();
+    const onGameOver = vi.fn();
+    match.events.on(SCENE_EVENTS.GAME_OVER, onGameOver);
+
+    match.shutdown();
+    match.events.emit(SCENE_EVENTS.GAME_OVER, 'human');
+
+    expect(onGameOver).not.toHaveBeenCalled();
+    expect(match.update(step, neutralInput)).toBeNull();
   });
 
   it('records free-for-all elimination order and names the last fighter standing', () => {

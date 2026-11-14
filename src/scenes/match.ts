@@ -1,4 +1,4 @@
-import { CONFIG, WEAPON_ORDER } from '../config';
+import { CONFIG, SCENE_EVENTS, WEAPON_ORDER } from '../config';
 import { AudioManager } from '../audio/audio';
 import { clamp, distance, overlaps } from '../engine/math';
 import { ObjectPool } from '../engine/pool';
@@ -12,6 +12,7 @@ import { cycleWeapon, fireWeapon } from '../weapons/fire';
 import type { BotAction, Fighter, FighterId, InputFrame, MatchConfig, Pickup, Platform, PlayerInput } from '../types';
 import type { GameSettings } from '../storage/settings';
 import { createMatchConfig, DEFAULT_MATCH_CONFIG } from '../game/match-config';
+import { SceneEventEmitter } from './events';
 
 const PICKUP_POINTS = CONFIG.world.pickupSpawns;
 
@@ -36,6 +37,7 @@ function overlapsCircle(x: number, y: number, radius: number, fighter: Fighter):
 }
 
 export class MatchScene {
+  readonly events = new SceneEventEmitter();
   readonly config: MatchConfig;
   readonly fighters: Fighter[];
   readonly projectiles = new ProjectileSystem();
@@ -54,6 +56,7 @@ export class MatchScene {
   private readonly botController = new BotController();
   private readonly random: () => number;
   private readonly botVsBot: boolean;
+  private isShutdown = false;
 
   constructor(settings: GameSettings, audio: AudioManager, matchConfig: MatchConfig = DEFAULT_MATCH_CONFIG, options: MatchSceneOptions = {}) {
     this.audio = audio;
@@ -71,6 +74,12 @@ export class MatchScene {
   get bot(): Fighter { return this.fighters.find((fighter) => fighter.controller === 'bot') ?? this.fighters.find((fighter) => fighter.playerSlot === 2) ?? this.fighters[0]!; }
   get platforms(): readonly Platform[] { return CONFIG.world.platforms; }
   get winnerFighter(): Fighter | null { return this.winner ? this.fighters.find((fighter) => fighter.id === this.winner) ?? null : null; }
+
+  shutdown(): void {
+    if (this.isShutdown) return;
+    this.isShutdown = true;
+    this.events.shutdown();
+  }
 
   private createRoster(settings: GameSettings): Fighter[] {
     const selectedColor = Math.max(0, Math.min(CONFIG.fighters.colorways.length - 1, settings.colorIndex));
@@ -161,7 +170,7 @@ export class MatchScene {
   }
 
   update(dt: number, input: InputFrame): FighterId | null {
-    if (this.finished) return this.winner;
+    if (this.finished || this.isShutdown) return this.winner;
     this.elapsed += dt;
     this.toastTimer = Math.max(0, this.toastTimer - dt);
     this.shake = Math.max(0, this.shake - CONFIG.feedback.shakeDecay * dt);
@@ -453,6 +462,7 @@ export class MatchScene {
     this.winner = winner;
     const winningFighter = this.fighters.find((fighter) => fighter.id === winner);
     this.audio.play(winningFighter?.playerSlot !== null && winningFighter?.playerSlot !== undefined ? 'win' : 'lose');
+    this.events.emit(SCENE_EVENTS.GAME_OVER, winner);
   }
 }
 
