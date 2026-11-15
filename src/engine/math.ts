@@ -1,24 +1,55 @@
-export interface Vec2 { x: number; y: number }
-export interface Rect { x: number; y: number; width: number; height: number }
+export class InputController {
+  // ... existing code ...
+  private readonly canvas: HTMLCanvasElement;
+  private readonly knownCodes: ReadonlySet<string> = new Set<string>([
+    ...Object.values(CONFIG.input.player1).flat(),
+    ...Object.values(CONFIG.input.player2).flat(),
+    ...Object.values(CONFIG.input.singlePlayerAliases).flat(),
+    CONFIG.input.pause,
+    ...CONFIG.input.menuUp,
+    ...CONFIG.input.menuDown,
+    ...CONFIG.input.menuAccept,
+    ...CONFIG.input.menuBack,
+  ]);
 
-export function clamp(value: number, minimum: number, maximum: number): number {
-  return Math.min(maximum, Math.max(minimum, value));
-}
+  constructor(canvas: HTMLCanvasElement) {
+    this.canvas = canvas;
+    window.addEventListener('keydown', this.onKeyDown);
+    window.addEventListener('keyup', this.onKeyUp);
+    window.addEventListener('blur', this.onBlur);
+    canvas.addEventListener('pointermove', this.onPointerMove);
+    canvas.addEventListener('pointerdown', this.onPointerDown);
+    window.addEventListener('pointerup', this.onPointerUp);
+    window.addEventListener('pointercancel', this.onPointerUp);
+    canvas.addEventListener('contextmenu', this.onContextMenu);
+  }
 
-export function approach(value: number, target: number, amount: number): number {
-  if (value < target) return Math.min(target, value + amount);
-  return Math.max(target, value - amount);
-}
+  private readonly onKeyDown = (event: KeyboardEvent): void => {
+    const code = event.code;
+    const browserShortcut = (event.ctrlKey || event.metaKey)
+      && !code.startsWith('Control') && !code.startsWith('Meta');
+    if (!browserShortcut && this.knownCodes.has(code)) event.preventDefault();
+    if (!this.held.has(code)) this.pressed.add(code);
+    this.held.add(code);
+  };
 
-export function overlaps(a: Rect, b: Rect): boolean {
-  return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
-}
+  private readonly onBlur = (): void => {
+    this.held.clear();
+    this.pressed.clear();
+    this.pointerDown = false;
+    this.pointerPressed = false;
+  };
 
-export function normalize(x: number, y: number): Vec2 {
-  const length = Math.hypot(x, y) || 1;
-  return { x: x / length, y: y / length };
-}
+  // ... existing code ...
 
-export function distance(x1: number, y1: number, x2: number, y2: number): number {
-  return Math.hypot(x2 - x1, y2 - y1);
+  destroy(): void {
+    window.removeEventListener('keydown', this.onKeyDown);
+    window.removeEventListener('keyup', this.onKeyUp);
+    window.removeEventListener('blur', this.onBlur);
+    this.canvas.removeEventListener('pointermove', this.onPointerMove);
+    this.canvas.removeEventListener('pointerdown', this.onPointerDown);
+    window.removeEventListener('pointerup', this.onPointerUp);
+    window.removeEventListener('pointercancel', this.onPointerUp);
+    this.canvas.removeEventListener('contextmenu', this.onContextMenu);
+  }
 }
