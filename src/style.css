@@ -122,7 +122,7 @@ body { background: #162039; overscroll-behavior: none; touch-action: none; user-
 #touch-controls.opacity-medium { --touch-opacity: .62; }
 #touch-controls.opacity-high { --touch-opacity: .82; }
 .touch-zone { position: absolute; bottom: max(18px, env(safe-area-inset-bottom)); pointer-events: none; }
-#touch-left { left: max(18px, env(safe-area-inset-left)); }
+#touch-left { left: max(18px, env(safe-area-inset-left)); width: min(44vw, 320px); height: min(72%, 420px); pointer-events: auto; touch-action: none; }
 #touch-right { right: max(18px, env(safe-area-inset-right)); display: grid; grid-template-columns: repeat(2, minmax(48px, 1fr)); gap: 10px; align-items: end; }
 .touch-button {
   min-width: 48px;
@@ -149,8 +149,8 @@ body { background: #162039; overscroll-behavior: none; touch-action: none; user-
 .touch-action.shoot { background-color: rgba(255, 107, 92, var(--touch-opacity)); }
 .touch-action.switch { background-color: rgba(255, 225, 107, var(--touch-opacity)); color: #172137; text-shadow: none; }
 .touch-action.pause { min-height: 48px; height: calc(50px * var(--touch-size)); border-radius: 50%; font-size: 18px; }
-.joystick { width: calc(142px * var(--touch-size)); height: calc(142px * var(--touch-size)); border-radius: 50%; background: rgba(36,52,75,var(--touch-opacity)); display: grid; place-items: center; }
-.joystick span { width: 44%; height: 44%; border: 3px solid rgba(255,248,223,.8); border-radius: 50%; background: rgba(255,107,92,.75); box-shadow: 0 3px 0 #172137; }
+.joystick { position: absolute; left: 0; bottom: 0; width: calc(142px * var(--touch-size)); height: calc(142px * var(--touch-size)); border-radius: 50%; background: rgba(36,52,75,var(--touch-opacity)); display: grid; place-items: center; }
+.joystick span { width: 44%; height: 44%; border: 3px solid rgba(255,248,223,.8); border-radius: 50%; background: rgba(255,107,92,.75); box-shadow: 0 3px 0 #172137; transform: translate(var(--joystick-x, 0px), var(--joystick-y, 0px)); }
 #touch-controls.left-handed #touch-left { left: auto; right: max(18px, env(safe-area-inset-right)); }
 #touch-controls.left-handed #touch-right { right: auto; left: max(18px, env(safe-area-inset-left)); }
 #rotate-overlay { position: absolute; inset: 0; z-index: 5; display: grid; place-items: center; padding: 24px; background: rgba(15,23,40,.94); color: #fff8df; text-align: center; }

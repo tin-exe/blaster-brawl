@@ -41,6 +41,7 @@ export function createFighter(id: FighterId, spawn: SpawnPoint, settings: GameSe
     facing: spawn.x < CONFIG.world.width * 0.5 ? 1 : -1,
     grounded: false,
     jumpsUsed: 0,
+    damagePercent: 0,
     stocks: options.stocks ?? CONFIG.fighters.stocks,
     weapon: 'pistol',
     ammo: {
@@ -76,6 +77,7 @@ export function respawnFighter(fighter: Fighter, spawn: SpawnPoint): void {
   fighter.facing = fighter.x < CONFIG.world.width * 0.5 ? 1 : -1;
   fighter.grounded = false;
   fighter.jumpsUsed = 0;
+  fighter.damagePercent = 0;
   fighter.weapon = 'pistol';
   fighter.ammo = {
     pistol: CONFIG.weapons.pistol.ammo,

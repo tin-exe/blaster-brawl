@@ -58,6 +58,40 @@ export class AudioManager {
     oscillator.stop(now + sound.duration);
   }
 
+  playImpact(heavy: boolean): void {
+    this.play('hit');
+    if (heavy) this.playBassThud(68, 0.2, 0.19);
+  }
+
+  playExplosion(): void {
+    this.play('explosion', 'rocket');
+    this.playBassThud(52, 0.3, 0.24);
+  }
+
+  playKnockout(): void {
+    this.play('ko');
+    this.playBassThud(58, 0.24, 0.2);
+  }
+
+  private playBassThud(frequency: number, duration: number, peak: number): void {
+    if (this.muted || !this.unlocked || !this.context || this.activeVoices >= CONFIG.audio.oscillatorLimit) return;
+    const context = this.context;
+    const now = context.currentTime;
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+    oscillator.type = 'sine';
+    oscillator.frequency.setValueAtTime(frequency, now);
+    oscillator.frequency.exponentialRampToValueAtTime(34, now + duration);
+    gain.gain.setValueAtTime(peak, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+    oscillator.connect(gain);
+    gain.connect(context.destination);
+    this.activeVoices += 1;
+    oscillator.onended = () => { this.activeVoices = Math.max(0, this.activeVoices - 1); oscillator.disconnect(); gain.disconnect(); };
+    oscillator.start(now);
+    oscillator.stop(now + duration);
+  }
+
   close(): void {
     if (this.context) void this.context.close().catch(() => undefined);
     this.context = null;

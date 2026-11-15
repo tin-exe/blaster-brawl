@@ -367,6 +367,24 @@ function drawFighter(ctx: CanvasRenderingContext2D, fighter: Fighter): void {
   ctx.stroke();
   drawMarkerShape(ctx, fighter.x - labelWidth * 0.5 + 12, fighter.y - 19, fighter.markerShape, fighter.color, 5.5);
   text(ctx, `${fighter.markerNumber} ${fighter.displayName}`, fighter.x + 6, fighter.y - 19, 10, PAPER, 'center', 2, 950);
+  const gaugeWidth = 74;
+  const gaugeHeight = 11;
+  const gaugeX = fighter.x - gaugeWidth * 0.5;
+  const gaugeY = fighter.y + fighter.height + 7;
+  const damage = clampNumber(fighter.damagePercent, 0, CONFIG.combat.maximumDamage);
+  const ratio = damage / CONFIG.combat.maximumDamage;
+  const gaugeColor = ratio < 0.34 ? '#72e39a' : ratio < 0.67 ? '#ffd05b' : '#ff625c';
+  roundedRectPath(ctx, gaugeX - 2, gaugeY - 2, gaugeWidth + 4, gaugeHeight + 4, 6);
+  ctx.fillStyle = '#172137';
+  ctx.fill();
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = PAPER;
+  ctx.stroke();
+  if (ratio > 0) {
+    roundedRectPath(ctx, gaugeX, gaugeY, Math.max(4, gaugeWidth * ratio), gaugeHeight, 4);
+    ctx.fillStyle = gaugeColor;
+    ctx.fill();
+  }
 }
 
 function drawPickup(ctx: CanvasRenderingContext2D, pickup: Pickup): void {
@@ -753,8 +771,15 @@ function drawGameOver(ctx: CanvasRenderingContext2D, state: RenderState): void {
 
 export function renderGame(ctx: CanvasRenderingContext2D, state: RenderState): void {
   ctx.save();
-  const shake = state.screen === SCENE.GAME && !state.paused ? state.match?.shake ?? 0 : 0;
+  const inMatchView = state.screen === SCENE.GAME;
+  const shake = inMatchView && !state.paused ? state.match?.shake ?? 0 : 0;
   if (shake > 0) ctx.translate((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake);
+  const cameraZoom = inMatchView && !state.paused ? state.match?.cameraZoom ?? 0 : 0;
+  if (cameraZoom > 0) {
+    ctx.translate(CONFIG.canvas.width * 0.5, CONFIG.canvas.height * 0.5);
+    ctx.scale(1 + cameraZoom, 1 + cameraZoom);
+    ctx.translate(-CONFIG.canvas.width * 0.5, -CONFIG.canvas.height * 0.5);
+  }
   const cameraX = state.match?.cameraX ?? 0;
   const arena = state.match?.arena ?? CONFIG.world.arenas[0];
   const platforms = state.match?.platforms ?? arena.platforms;

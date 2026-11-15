@@ -14,6 +14,9 @@ export class TouchControls {
   private source: InputSource;
   private gameActive = false;
   private readonly pressedTargets = new Map<number, HTMLElement>();
+  private joystickPointerId: number | null = null;
+  private joystickOriginX = 0;
+  private joystickOriginY = 0;
 
   constructor(root: HTMLElement, joystick: HTMLElement, settings: GameSettings) {
     this.root = root;
@@ -65,6 +68,7 @@ export class TouchControls {
     window.removeEventListener('blur', this.onWindowBlur);
     this.input.clear();
     this.clearPressedTargets();
+    this.resetJoystickVisual();
   }
 
   private refreshVisibility(): void {
@@ -73,20 +77,26 @@ export class TouchControls {
     if (!visible) {
       this.input.clear();
       this.clearPressedTargets();
+      this.resetJoystickVisual();
     }
   }
 
   private readonly onPointerDown = (event: PointerEvent): void => {
-    const target = event.target instanceof Element ? event.target.closest<HTMLElement>('[data-touch-action]') : null;
+    const element = event.target instanceof Element ? event.target : null;
+    const actionTarget = element?.closest<HTMLElement>('[data-touch-action]') ?? null;
+    const leftZone = element?.closest<HTMLElement>('#touch-left') ?? null;
+    const target = actionTarget ?? (leftZone ? this.joystick : null);
     if (!target || !this.root.contains(target)) return;
     event.preventDefault();
     this.source = 'touch';
     this.root.hidden = false;
-    const action = target.dataset.touchAction as TouchAction | undefined;
+    const action = (actionTarget?.dataset.touchAction as TouchAction | undefined) ?? (leftZone ? 'joystick' : undefined);
     if (!action) return;
+    if (action === 'joystick' && this.joystickPointerId !== null) return;
     this.input.pointerDown(event.pointerId, action);
     this.pressedTargets.set(event.pointerId, target);
     target.classList.add('is-pressed');
+    if (action === 'joystick') this.anchorJoystick(event);
     try { target.setPointerCapture(event.pointerId); } catch { /* Pointer capture is optional in embedded browsers. */ }
     if (action === 'joystick') this.updateJoystick(event);
     if (this.settings.haptics && action !== 'joystick' && 'vibrate' in navigator) navigator.vibrate(10);
@@ -99,8 +109,10 @@ export class TouchControls {
   };
 
   private readonly onPointerEnd = (event: PointerEvent): void => {
-    if (this.input.getAction(event.pointerId)) event.preventDefault();
+    const action = this.input.getAction(event.pointerId);
+    if (action) event.preventDefault();
     this.input.pointerUp(event.pointerId);
+    if (action === 'joystick') this.resetJoystickVisual();
     const target = this.pressedTargets.get(event.pointerId);
     this.pressedTargets.delete(event.pointerId);
     if (target && ![...this.pressedTargets.values()].includes(target)) target.classList.remove('is-pressed');
@@ -109,6 +121,7 @@ export class TouchControls {
   private readonly onWindowBlur = (): void => {
     this.input.clear();
     this.clearPressedTargets();
+    this.resetJoystickVisual();
   };
 
   private clearPressedTargets(): void {
@@ -119,11 +132,46 @@ export class TouchControls {
   private updateJoystick(event: PointerEvent): void {
     const bounds = this.joystick.getBoundingClientRect();
     const radius = Math.max(1, Math.min(bounds.width, bounds.height) * 0.5);
+    const dx = event.clientX - this.joystickOriginX;
+    const dy = event.clientY - this.joystickOriginY;
     this.input.setJoystick(
       event.pointerId,
-      event.clientX - (bounds.left + bounds.width * 0.5),
-      event.clientY - (bounds.top + bounds.height * 0.5),
-      radius,
+      dx,
+      dy,
+      radius * 0.58,
     );
+    const travel = Math.hypot(dx, dy);
+    const scale = travel > radius * 0.52 ? radius * 0.52 / travel : 1;
+    this.joystick.style.setProperty('--joystick-x', `${dx * scale}px`);
+    this.joystick.style.setProperty('--joystick-y', `${dy * scale}px`);
+  }
+
+  private anchorJoystick(event: PointerEvent): void {
+    const bounds = this.joystick.getBoundingClientRect();
+    const halfWidth = bounds.width * 0.5;
+    const halfHeight = bounds.height * 0.5;
+    this.joystickPointerId = event.pointerId;
+    this.joystickOriginX = event.clientX;
+    this.joystickOriginY = event.clientY;
+    this.joystick.style.position = 'fixed';
+    this.joystick.style.left = `${Math.max(halfWidth, Math.min(window.innerWidth - halfWidth, event.clientX))}px`;
+    this.joystick.style.top = `${Math.max(halfHeight, Math.min(window.innerHeight - halfHeight, event.clientY))}px`;
+    this.joystick.style.bottom = 'auto';
+    this.joystick.style.transform = 'translate(-50%, -50%)';
+    this.joystick.style.zIndex = '4';
+    this.joystick.style.setProperty('--joystick-x', '0px');
+    this.joystick.style.setProperty('--joystick-y', '0px');
+  }
+
+  private resetJoystickVisual(): void {
+    this.joystickPointerId = null;
+    this.joystick.style.position = '';
+    this.joystick.style.left = '';
+    this.joystick.style.top = '';
+    this.joystick.style.bottom = '';
+    this.joystick.style.transform = '';
+    this.joystick.style.zIndex = '';
+    this.joystick.style.removeProperty('--joystick-x');
+    this.joystick.style.removeProperty('--joystick-y');
   }
 }

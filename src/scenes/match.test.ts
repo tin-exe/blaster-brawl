@@ -86,8 +86,30 @@ describe('match roster and round lifecycle', () => {
     match.update(step, neutralInput);
     expect(target.shieldTime).toBe(0);
     expect(target.vx).toBeCloseTo(0, 4);
-    expect(match.hitstopRemaining).toBeGreaterThan(0);
+    expect(match.hitstopRemaining).toBe(0);
     expect(match.screenFlash).toBeGreaterThan(0);
+  });
+
+  it('builds vulnerability over repeated hits and reserves hitstop for heavy knockback', () => {
+    const match = makeMatch();
+    const target = match.human;
+    const opponent = match.fighters.find((fighter) => fighter.id === 'bot');
+    if (opponent) opponent.controller = 'human';
+    match.projectiles.spawn('bot', 'pistol', target.x - 12, target.y + 24, 0);
+    match.update(step, neutralInput);
+    expect(target.damagePercent).toBeGreaterThan(0);
+    expect(match.hitstopRemaining).toBe(0);
+
+    target.x = CONFIG.world.spawn.human.x;
+    target.y = CONFIG.world.spawn.human.y;
+    target.vx = 0;
+    target.vy = 0;
+    target.hitTimer = 0;
+    match.projectiles.spawn('bot', 'railgun', target.x - 12, target.y + 24, 0);
+    match.update(step, neutralInput);
+    expect(target.damagePercent).toBeGreaterThan(12);
+    expect(match.hitstopRemaining).toBeGreaterThanOrEqual(0.05);
+    expect(match.cameraZoom).toBeGreaterThan(0);
   });
 
   it('routes Player 2 movement without moving Player 1 in a local game', () => {
@@ -110,14 +132,19 @@ describe('match roster and round lifecycle', () => {
   it('removes one stock and respawns with invulnerability after a ring-out', () => {
     const match = makeMatch();
     match.human.invulnerable = 10;
+    match.bot.damagePercent = 80;
     match.bot.y = CONFIG.world.killY + 1;
     match.update(step, neutralInput);
     expect(match.bot.stocks).toBe(CONFIG.fighters.stocks - 1);
     expect(match.bot.dead).toBe(true);
+    expect(match.bot.damagePercent).toBe(80);
+    expect(match.cameraZoom).toBeGreaterThan(0);
+    expect(match.shake).toBeGreaterThan(0);
     const respawnFrames = Math.ceil(CONFIG.fighters.respawnSeconds * CONFIG.canvas.targetFps) + 2;
     for (let frame = 0; frame < respawnFrames; frame += 1) match.update(step, neutralInput);
     expect(match.bot.dead).toBe(false);
     expect(match.bot.stocks).toBe(CONFIG.fighters.stocks - 1);
+    expect(match.bot.damagePercent).toBe(0);
     expect(match.bot.invulnerable).toBeGreaterThan(0);
     expect(match.finished).toBe(false);
   });

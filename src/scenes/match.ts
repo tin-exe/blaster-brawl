@@ -46,6 +46,7 @@ export class MatchScene {
   readonly pickups = new ObjectPool(CONFIG.combat.pickupPoolSize, makePickup);
   readonly eliminationOrder: FighterId[] = [];
   cameraX = 0;
+  cameraZoom = 0;
   shake = 0;
   shakeIntensity: number;
   hitstopRemaining = 0;
@@ -186,6 +187,7 @@ export class MatchScene {
     this.elapsed += dt;
     this.toastTimer = Math.max(0, this.toastTimer - dt);
     this.shake = Math.max(0, this.shake - CONFIG.feedback.shakeDecay * dt);
+    this.cameraZoom = Math.max(0, this.cameraZoom - CONFIG.feedback.cameraZoomDecay * dt);
     this.screenFlash = Math.max(0, this.screenFlash - CONFIG.feedback.flashFadePerSecond * dt);
     if (this.hitstopRemaining > 0) {
       this.hitstopRemaining = Math.max(0, this.hitstopRemaining - dt);
@@ -384,8 +386,10 @@ export class MatchScene {
     fighter.vy = 0;
     fighter.grounded = false;
     if (fighter.stocks <= 0 && !this.eliminationOrder.includes(fighter.id)) this.eliminationOrder.push(fighter.id);
-    this.showToast(fighter.stocks > 0 ? `${fighter.displayName.toUpperCase()} RING OUT! ${fighter.stocks} STOCK${fighter.stocks === 1 ? '' : 'S'} LEFT.` : `${fighter.displayName.toUpperCase()} ELIMINATED!`);
-    this.audio.play('hit');
+    this.showToast(`KO! ${fighter.displayName.toUpperCase()} ${fighter.stocks > 0 ? `RING OUT — ${fighter.stocks} STOCK${fighter.stocks === 1 ? '' : 'S'} LEFT` : 'ELIMINATED'}`);
+    this.cameraZoom = Math.max(this.cameraZoom, CONFIG.feedback.cameraZoomRingOut);
+    this.pauseShake(CONFIG.feedback.ringOutShake);
+    this.audio.playKnockout();
     if (fighter.controller === 'bot' && fighter.stocks <= 0 && this.config.weaponsEnabled && this.random() < CONFIG.powerups.dropChance) {
       const drop = this.pickups.acquire();
       if (drop) {
@@ -464,8 +468,7 @@ export class MatchScene {
     this.effects.ring(x, y, weapon.color, 18, weapon.explosionRadius + 28, 0.34);
     this.screenFlashColor = '#ffbc79';
     this.screenFlash = Math.max(this.screenFlash, CONFIG.feedback.rocketFlashAlpha);
-    this.hitstopRemaining = Math.max(this.hitstopRemaining, CONFIG.feedback.rocketHitStopSeconds);
-    this.audio.play('explosion', 'rocket');
+    this.audio.playExplosion();
     this.pauseShake(CONFIG.feedback.rocketShake);
     for (const target of this.fighters) {
       if (target.id === owner || target.dead || target.stocks <= 0 || target.invulnerable > 0) continue;
@@ -486,7 +489,6 @@ export class MatchScene {
       this.effects.ring(target.x, target.y + target.height * 0.45, CONFIG.powerups.shield.color, 12, 68, 0.26);
       this.screenFlashColor = CONFIG.powerups.shield.color;
       this.screenFlash = Math.max(this.screenFlash, CONFIG.feedback.shieldFlashAlpha);
-      this.hitstopRemaining = Math.max(this.hitstopRemaining, CONFIG.feedback.shieldHitStopSeconds);
       this.audio.play('shieldBreak');
       this.pauseShake(1.8);
       return;
@@ -494,7 +496,9 @@ export class MatchScene {
     const weapon = CONFIG.weapons[weaponId];
     let direction: -1 | 1 = target.x >= sourceX ? 1 : -1;
     if (Math.abs(target.x - sourceX) < 1) direction = horizontalVelocity < 0 ? 1 : -1;
-    const force = calculateKnockback({ baseKnockback: weapon.knockback, damage: weapon.damage, direction, scale });
+    target.damagePercent = Math.min(CONFIG.combat.maximumDamage, target.damagePercent + weapon.damage * CONFIG.combat.damagePerPower * scale);
+    const force = calculateKnockback({ baseKnockback: weapon.knockback, damage: target.damagePercent, direction, scale });
+    const heavyImpact = Math.abs(force.x) >= CONFIG.combat.heavyImpactThreshold;
     target.vx = force.x;
     target.vy = force.y;
     target.grounded = false;
@@ -503,8 +507,11 @@ export class MatchScene {
     this.effects.ring(target.x, target.y + target.height * 0.45, weapon.color, 8, weaponId === 'rocket' ? 76 : 48, 0.22);
     this.screenFlashColor = '#fff1cf';
     this.screenFlash = Math.max(this.screenFlash, weaponId === 'rocket' ? CONFIG.feedback.rocketFlashAlpha : CONFIG.feedback.hitFlashAlpha);
-    this.hitstopRemaining = Math.max(this.hitstopRemaining, weaponId === 'rocket' ? CONFIG.feedback.rocketHitStopSeconds : CONFIG.feedback.hitStopSeconds);
-    this.audio.play('hit');
+    if (heavyImpact) {
+      this.hitstopRemaining = Math.max(this.hitstopRemaining, weaponId === 'rocket' ? CONFIG.feedback.rocketHitStopSeconds : CONFIG.feedback.hitStopSeconds);
+      this.cameraZoom = Math.max(this.cameraZoom, weaponId === 'rocket' ? CONFIG.feedback.cameraZoomRocket : CONFIG.feedback.cameraZoomHit);
+    }
+    this.audio.playImpact(heavyImpact);
     this.pauseShake(weaponId === 'rocket' ? CONFIG.feedback.rocketShake : CONFIG.feedback.hitShake);
   }
 

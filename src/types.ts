@@ -33,6 +33,7 @@ export interface Fighter {
   facing: -1 | 1;
   grounded: boolean;
   jumpsUsed: number;
+  damagePercent: number;
   stocks: number;
   weapon: WeaponId;
   ammo: Record<WeaponId, number>;
