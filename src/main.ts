@@ -1,7 +1,8 @@
 import { AudioManager } from './audio/audio';
-import { CONFIG } from './config';
+import { CONFIG, SCENE, SCENE_EVENTS } from './config';
 import { InputController } from './engine/input';
 import { adjustMatchConfig, DEFAULT_MATCH_CONFIG } from './game/match-config';
+import { SceneEventEmitter } from './scenes/events';
 import { MatchScene } from './scenes/match';
 import { renderGame, type RenderState, type ScreenMode } from './render/renderer';
 import { loadSettings, saveSettings, type GameSettings } from './storage/settings';
@@ -37,15 +38,16 @@ const input = new InputController(canvas);
 let settings: GameSettings = loadSettings();
 const audio = new AudioManager(settings.muted);
 const touchControls = new TouchControls(touchRoot, joystickPad, settings);
-let screen: ScreenMode = 'menu';
+let screen: ScreenMode = SCENE.MENU;
 let match: MatchScene | null = null;
+const sceneEvents = new SceneEventEmitter();
 let paused = false;
 let menuIndex = 0;
 let customIndex = 0;
 let customConfig: MatchConfig = DEFAULT_MATCH_CONFIG;
 let lastMatchConfig: MatchConfig = DEFAULT_MATCH_CONFIG;
 let optionsIndex = 0;
-let resultIndex = 0;
+let gameOverIndex = 0;
 let pauseIndex = 0;
 let elapsed = 0;
 let menuToast = '';
@@ -94,7 +96,7 @@ window.visualViewport?.addEventListener('resize', resizeCanvas);
 function updateOrientationState(): void {
   const portrait = window.innerHeight > window.innerWidth;
   rotateOverlay.hidden = !portrait;
-  if (screen !== 'match') return;
+  if (screen !== SCENE.GAME) return;
   if (portrait && !paused) {
     paused = true;
     pausedForOrientation = true;
@@ -132,7 +134,7 @@ window.addEventListener('keydown', () => touchControls.setInputSource('keyboard'
 window.addEventListener('gamepadconnected', () => touchControls.setInputSource('gamepad'));
 
 function pauseForInterruption(): void {
-  if (screen === 'match' && !paused) paused = true;
+  if (screen === SCENE.GAME && !paused) paused = true;
   accumulator = 0;
   clearQueuedGameInput();
   void audio.suspend();
@@ -175,12 +177,17 @@ function setMenuToast(message: string): void {
   menuToastTimer = CONFIG.hud.toastSeconds;
 }
 
-function startMatch(config: MatchConfig = lastMatchConfig): void {
+function startGame(config: MatchConfig = lastMatchConfig): void {
   lastMatchConfig = config;
-  match = new MatchScene(settings, audio, config);
-  screen = 'match';
+  match?.shutdown();
+  const activeMatch = new MatchScene(settings, audio, config);
+  match = activeMatch;
+  activeMatch.events.once(SCENE_EVENTS.GAME_OVER, (winner) => {
+    sceneEvents.emit(SCENE_EVENTS.GAME_OVER, winner);
+  });
+  screen = SCENE.GAME;
   paused = false;
-  resultIndex = 0;
+  gameOverIndex = 0;
   pauseIndex = 0;
   accumulator = 0;
   queuedJump = false;
@@ -206,54 +213,78 @@ function startMatch(config: MatchConfig = lastMatchConfig): void {
   canvas.focus({ preventScroll: true });
 }
 
+function returnToMenu(): void {
+  match?.shutdown();
+  screen = SCENE.MENU;
+  match = null;
+  paused = false;
+  accumulator = 0;
+  clearQueuedGameInput();
+}
+
+sceneEvents.on(SCENE_EVENTS.START_GAME, (config) => startGame(config));
+sceneEvents.on(SCENE_EVENTS.RESTART_GAME, () => startGame(lastMatchConfig));
+sceneEvents.on(SCENE_EVENTS.RETURN_TO_MENU, () => returnToMenu());
+sceneEvents.on(SCENE_EVENTS.GAME_OVER, () => {
+  if (screen !== SCENE.GAME) return;
+  screen = SCENE.GAME_OVER;
+  paused = false;
+  gameOverIndex = 0;
+});
+
 function setMute(): void {
   settings = { ...settings, muted: !settings.muted };
   persist();
 }
 
-function setMenuSelectionFromPointer(x: number, y: number): void {
+function setMenuSelectionFromPointer(x: number, y: number): boolean {
   const panelWidth = CONFIG.menu.panelWidth;
   const panelX = CONFIG.canvas.width - CONFIG.menu.rightMargin - panelWidth;
   const top = 180 + 28;
-  if (x < panelX || x > panelX + panelWidth) return;
+  if (x < panelX || x > panelX + panelWidth) return false;
   const index = Math.floor((y - top + CONFIG.menu.rowHeight * 0.5) / CONFIG.menu.rowHeight);
-  if (index >= 0 && index < CONFIG.menu.items.length) menuIndex = index;
+  if (index < 0 || index >= CONFIG.menu.items.length) return false;
+  menuIndex = index;
+  return true;
 }
 
 function updateMenu(frame: InputFrame): void {
   if (frame.menuUp) menuIndex = (menuIndex + CONFIG.menu.items.length - 1) % CONFIG.menu.items.length;
   if (frame.menuDown) menuIndex = (menuIndex + 1) % CONFIG.menu.items.length;
-  if (frame.pointerDown || frame.pointerPressed) setMenuSelectionFromPointer(frame.pointerX, frame.pointerY);
-  if (!(frame.menuAccept || frame.pointerPressed)) return;
+  const overMenuItem = (frame.pointerMoved || frame.pointerDown || frame.pointerPressed)
+    ? setMenuSelectionFromPointer(frame.pointerX, frame.pointerY)
+    : false;
+  if (!(frame.menuAccept || (frame.pointerPressed && overMenuItem))) return;
   const selected = CONFIG.menu.items[menuIndex];
   if (!selected) return;
   audio.play('menu');
-  if (selected.id === 'play') startMatch(DEFAULT_MATCH_CONFIG);
-  else if (selected.id === 'options') screen = 'options';
+  if (selected.id === 'play') sceneEvents.emit(SCENE_EVENTS.START_GAME, DEFAULT_MATCH_CONFIG);
+  else if (selected.id === 'options') screen = SCENE.OPTIONS;
   else if (selected.id === 'custom') {
     customConfig = DEFAULT_MATCH_CONFIG;
     customIndex = 0;
-    screen = 'custom';
+    screen = SCENE.CUSTOM;
   } else setMenuToast(CONFIG.copy.comingSoon);
 }
 
 function updateCustomGame(frame: InputFrame): void {
-  const rowCount = 7;
+  const rowCount = CONFIG.scene.customRowCount;
   if (frame.menuUp) customIndex = (customIndex + rowCount - 1) % rowCount;
   if (frame.menuDown) customIndex = (customIndex + 1) % rowCount;
-  if (frame.menuBack) { screen = 'menu'; return; }
+  if (frame.menuBack) { screen = SCENE.MENU; return; }
 
   let pointerSelected = false;
-  if (frame.pointerPressed && frame.pointerX > 196 && frame.pointerX < 764 && frame.pointerY > 157 && frame.pointerY < 438) {
+  const overCustomPanel = frame.pointerX > 196 && frame.pointerX < 764 && frame.pointerY > 157 && frame.pointerY < 438;
+  if ((frame.pointerMoved || frame.pointerDown || frame.pointerPressed) && overCustomPanel) {
     customIndex = Math.max(0, Math.min(rowCount - 1, Math.floor((frame.pointerY - 171) / 37)));
-    pointerSelected = true;
+    pointerSelected = frame.pointerPressed;
   }
-  if (customIndex === 5 && (frame.menuAccept || pointerSelected)) { audio.play('menu'); startMatch(customConfig); return; }
-  if (customIndex === 6 && (frame.menuAccept || pointerSelected)) { screen = 'menu'; return; }
+  if (customIndex === CONFIG.scene.customStartIndex && (frame.menuAccept || pointerSelected)) { audio.play('menu'); sceneEvents.emit(SCENE_EVENTS.START_GAME, customConfig); return; }
+  if (customIndex === CONFIG.scene.customBackIndex && (frame.menuAccept || pointerSelected)) { screen = SCENE.MENU; return; }
 
   const direction = frame.rightPressed ? 1 : frame.leftPressed ? -1 : (frame.menuAccept || pointerSelected) ? 1 : 0;
-  if (direction === 0 || customIndex > 4) return;
-  const fields = ['mode', 'bots', 'difficulty', 'stocks', 'weapons'] as const;
+  if (direction === 0 || customIndex >= CONFIG.scene.customFields.length) return;
+  const fields = CONFIG.scene.customFields;
   const field = fields[customIndex];
   if (field) {
     audio.play('menu');
@@ -267,19 +298,20 @@ function updateCustomGame(frame: InputFrame): void {
 }
 
 function updateOptions(frame: InputFrame): void {
-  const optionCount = 10;
+  const optionCount = CONFIG.scene.optionsRowCount;
   if (frame.menuUp) optionsIndex = (optionsIndex + optionCount - 1) % optionCount;
   if (frame.menuDown) optionsIndex = (optionsIndex + 1) % optionCount;
   if (frame.menuBack || (frame.pointerPressed && frame.pointerY > CONFIG.canvas.height - 80)) {
-    screen = 'menu';
+    screen = SCENE.MENU;
     return;
   }
-  if (frame.pointerPressed && frame.pointerX > 130 && frame.pointerX < 830 && frame.pointerY > 145 && frame.pointerY < 450) {
+  const overOptions = frame.pointerX > 130 && frame.pointerX < 830 && frame.pointerY > 145 && frame.pointerY < 450;
+  if ((frame.pointerMoved || frame.pointerDown || frame.pointerPressed) && overOptions) {
     optionsIndex = Math.max(0, Math.min(optionCount - 1, Math.floor((frame.pointerY - 158) / 29)));
+  }
+  if (frame.pointerPressed && overOptions) {
     applyOptionChange(1);
     return;
-  } else if (frame.pointerDown && frame.pointerX > 130 && frame.pointerX < 830 && frame.pointerY > 145 && frame.pointerY < 450) {
-    optionsIndex = Math.max(0, Math.min(optionCount - 1, Math.floor((frame.pointerY - 158) / 29)));
   }
   if (frame.menuAccept) applyOptionChange(1);
   if (frame.leftPressed) applyOptionChange(-1);
@@ -340,30 +372,29 @@ function updatePause(frame: InputFrame): void {
     paused = false;
     return;
   }
-  if (frame.menuUp) pauseIndex = (pauseIndex + 2) % 3;
-  if (frame.menuDown) pauseIndex = (pauseIndex + 1) % 3;
-  if (frame.pointerDown && frame.pointerX > 300 && frame.pointerX < 660 && frame.pointerY > 230 && frame.pointerY < 360) {
-    pauseIndex = Math.max(0, Math.min(2, Math.floor((frame.pointerY - 239) / 42)));
+  const actionCount = CONFIG.scene.pauseActions.length;
+  if (frame.menuUp) pauseIndex = (pauseIndex + actionCount - 1) % actionCount;
+  if (frame.menuDown) pauseIndex = (pauseIndex + 1) % actionCount;
+  const overPauseAction = frame.pointerX >= 326 && frame.pointerX <= 634 && frame.pointerY >= 243 && frame.pointerY <= 361;
+  if ((frame.pointerMoved || frame.pointerDown || frame.pointerPressed) && overPauseAction) {
+    pauseIndex = Math.max(CONFIG.scene.pauseActionIndex.resume, Math.min(CONFIG.scene.pauseActionIndex.mainMenu, Math.floor((frame.pointerY - 239) / 42)));
   }
-  if (!(frame.menuAccept || frame.pointerPressed)) return;
-  if (pauseIndex === 0) paused = false;
-  else if (pauseIndex === 1) startMatch(lastMatchConfig);
-  else {
-    screen = 'menu';
-    paused = false;
-    match = null;
-  }
+  if (!(frame.menuAccept || (frame.pointerPressed && overPauseAction))) return;
+  if (pauseIndex === CONFIG.scene.pauseActionIndex.resume) paused = false;
+  else if (pauseIndex === CONFIG.scene.pauseActionIndex.restart) sceneEvents.emit(SCENE_EVENTS.RESTART_GAME, undefined);
+  else sceneEvents.emit(SCENE_EVENTS.RETURN_TO_MENU, undefined);
 }
 
-function updateResult(frame: InputFrame): void {
-  if (frame.menuUp || frame.menuDown) resultIndex = (resultIndex + 1) % 2;
-  if (frame.pointerDown && frame.pointerY > 295 && frame.pointerY < 385) resultIndex = frame.pointerY < 344 ? 0 : 1;
-  if (!(frame.menuAccept || frame.pointerPressed)) return;
-  if (resultIndex === 0) startMatch(lastMatchConfig);
-  else {
-    screen = 'menu';
-    match = null;
+function updateGameOver(frame: InputFrame): void {
+  const actionCount = CONFIG.scene.gameOverActions.length;
+  if (frame.menuUp || frame.menuDown) gameOverIndex = (gameOverIndex + 1) % actionCount;
+  const overGameOverAction = frame.pointerX >= 319 && frame.pointerX <= 641 && frame.pointerY >= 316 && frame.pointerY <= 392;
+  if ((frame.pointerMoved || frame.pointerDown || frame.pointerPressed) && overGameOverAction) {
+    gameOverIndex = frame.pointerY < 354 ? CONFIG.scene.gameOverActionIndex.replay : CONFIG.scene.gameOverActionIndex.menu;
   }
+  if (!(frame.menuAccept || (frame.pointerPressed && overGameOverAction))) return;
+  if (gameOverIndex === CONFIG.scene.gameOverActionIndex.replay) sceneEvents.emit(SCENE_EVENTS.RESTART_GAME, undefined);
+  else sceneEvents.emit(SCENE_EVENTS.RETURN_TO_MENU, undefined);
 }
 
 function mergeGameInput(frame: InputFrame): InputFrame {
@@ -387,7 +418,7 @@ function clearQueuedGameInput(): void {
 }
 
 function monitorParticleQuality(frameMilliseconds: number): void {
-  if (!match || screen !== 'match') return;
+  if (!match || screen !== SCENE.GAME) return;
   if (settings.qualityMode !== 'auto') {
     const low = settings.qualityMode === 'low';
     match.setParticleLimit(low ? CONFIG.performance.mobileParticleLimit : CONFIG.particles.poolSize);
@@ -457,16 +488,16 @@ function loop(now: number): void {
     return;
   }
 
-  if (screen === 'match') updateOrientationState();
+  if (screen === SCENE.GAME) updateOrientationState();
   const frame = mergeTouchInput(input.frame(match?.config.humanPlayers ?? 1), touchControls.input.frame());
-  if (screen === 'menu') updateMenu(frame);
-  else if (screen === 'options') updateOptions(frame);
-  else if (screen === 'custom') updateCustomGame(frame);
-  else if (screen === 'result') updateResult(frame);
-  else if (screen === 'match') {
+  if (screen === SCENE.MENU) updateMenu(frame);
+  else if (screen === SCENE.OPTIONS) updateOptions(frame);
+  else if (screen === SCENE.CUSTOM) updateCustomGame(frame);
+  else if (screen === SCENE.GAME_OVER) updateGameOver(frame);
+  else if (screen === SCENE.GAME) {
     if (!paused && frame.pausePressed) paused = true;
     else if (paused) updatePause(frame);
-    if (!paused && screen === 'match' && match) {
+    if (!paused && screen === SCENE.GAME && match) {
       accumulator = Math.min(accumulator + delta, stepSeconds * CONFIG.canvas.maxCatchUpSteps);
       let steps = 0;
       while (accumulator >= stepSeconds && steps < CONFIG.canvas.maxCatchUpSteps) {
@@ -475,9 +506,6 @@ function loop(now: number): void {
         accumulator -= stepSeconds;
         steps += 1;
         if (match.finished) {
-          screen = 'result';
-          paused = false;
-          resultIndex = 0;
           break;
         }
       }
@@ -493,7 +521,7 @@ function loop(now: number): void {
     settings,
     menuIndex,
     optionsIndex,
-    resultIndex,
+    gameOverIndex,
     pauseIndex,
     paused,
     elapsed,
@@ -504,8 +532,9 @@ function loop(now: number): void {
     lowQuality: lowQualityActive,
     touchMode: touchControls.activeForPlayer,
     touchCapable: touchControls.isTouchDevice || settings.touchControlsEnabled,
+    pointerDown: frame.pointerDown,
   };
-  touchControls.setGameActive(screen === 'match');
+  touchControls.setGameActive(screen === SCENE.GAME);
   renderGame(context, state);
   monitorParticleQuality(delta * 1000);
   requestAnimationFrame(loop);

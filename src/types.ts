@@ -115,6 +115,7 @@ export interface InputFrame extends PlayerInput {
   pointerY: number;
   pointerPressed: boolean;
   pointerDown: boolean;
+  pointerMoved?: boolean;
 }
 
 export interface BotObservation {

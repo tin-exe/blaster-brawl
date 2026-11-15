@@ -1,11 +1,11 @@
-import { CONFIG } from '../config';
+import { CONFIG, SCENE } from '../config';
 import type { Fighter, HatStyle, Particle, Projectile } from '../types';
 import type { MatchScene } from '../scenes/match';
 import type { GameSettings } from '../storage/settings';
 import { matchModeLabel } from '../game/match-config';
 import type { MatchConfig, MarkerShape } from '../types';
 
-export type ScreenMode = 'menu' | 'options' | 'custom' | 'match' | 'result';
+export type ScreenMode = (typeof SCENE)[keyof typeof SCENE];
 
 export interface RenderState {
   screen: ScreenMode;
@@ -13,7 +13,7 @@ export interface RenderState {
   settings: GameSettings;
   menuIndex: number;
   optionsIndex: number;
-  resultIndex: number;
+  gameOverIndex: number;
   pauseIndex: number;
   paused: boolean;
   elapsed: number;
@@ -24,6 +24,7 @@ export interface RenderState {
   lowQuality: boolean;
   touchMode: boolean;
   touchCapable: boolean;
+  pointerDown: boolean;
 }
 
 const INK = '#172137';
@@ -557,8 +558,8 @@ function drawMenu(ctx: CanvasRenderingContext2D, state: RenderState): void {
     if (!item) continue;
     const centerY = y + 28 + i * rowHeight + 3;
     if (i === state.menuIndex) {
-      roundedRectPath(ctx, x + 14, centerY - 17, width - 28, 34, 8);
-      ctx.fillStyle = 'rgba(255,107,92,0.28)';
+      roundedRectPath(ctx, x + 14, centerY - 17 + (state.pointerDown ? 2 : 0), width - 28, 34, 8);
+      ctx.fillStyle = state.pointerDown ? 'rgba(255,107,92,0.52)' : 'rgba(255,107,92,0.28)';
       ctx.fill();
       text(ctx, '▶', x + width - 23, centerY, 16, '#ff806c', 'center', 2, 1000);
     }
@@ -585,8 +586,8 @@ function drawCustomGame(ctx: CanvasRenderingContext2D, state: RenderState): void
   for (let index = 0; index < rows.length; index += 1) {
     const y = 178 + index * 37;
     if (index === state.customIndex) {
-      roundedRectPath(ctx, 234, y - 16, 492, 33, 8);
-      ctx.fillStyle = 'rgba(255,107,92,0.28)';
+      roundedRectPath(ctx, 234, y - 16 + (state.pointerDown ? 2 : 0), 492, 33, 8);
+      ctx.fillStyle = state.pointerDown ? 'rgba(255,107,92,0.52)' : 'rgba(255,107,92,0.28)';
       ctx.fill();
       text(ctx, '▶', 700, y, 15, '#ff806c', 'center', 2, 1000);
     }
@@ -613,8 +614,8 @@ function drawOptions(ctx: CanvasRenderingContext2D, state: RenderState): void {
   for (let i = 0; i < rows.length; i += 1) {
     const y = 158 + i * 29;
     if (state.optionsIndex === i) {
-      roundedRectPath(ctx, 150, y - 13, 660, 27, 7);
-      ctx.fillStyle = 'rgba(255,107,92,0.26)';
+      roundedRectPath(ctx, 150, y - 13 + (state.pointerDown ? 2 : 0), 660, 27, 7);
+      ctx.fillStyle = state.pointerDown ? 'rgba(255,107,92,0.5)' : 'rgba(255,107,92,0.26)';
       ctx.fill();
       text(ctx, '▶', 790, y, 13, '#ff806c', 'center', 2, 1000);
     }
@@ -628,16 +629,21 @@ function drawPause(ctx: CanvasRenderingContext2D, state: RenderState): void {
   ctx.fillRect(0, 0, CONFIG.canvas.width, CONFIG.canvas.height);
   panel(ctx, 302, 151, 356, 252, 'rgba(22,31,50,0.97)');
   text(ctx, CONFIG.copy.paused, CONFIG.canvas.width * 0.5, 197, 34, '#ffe16b', 'center', 6, 1000);
-  const items = ['RESUME', 'RESTART MATCH', 'MAIN MENU'];
+  const items = CONFIG.scene.pauseActions;
   for (let i = 0; i < items.length; i += 1) {
     const y = 260 + i * 42;
-    if (i === state.pauseIndex) text(ctx, '▶', 367, y, 15, '#ff806c', 'center', 2, 1000);
-    text(ctx, items[i] ?? '', 394, y, 20, '#fff', 'left', 4, 950);
+    if (i === state.pauseIndex) {
+      roundedRectPath(ctx, 326, y - 17 + (state.pointerDown ? 2 : 0), 308, 34, 8);
+      ctx.fillStyle = state.pointerDown ? 'rgba(255,107,92,0.52)' : 'rgba(255,107,92,0.28)';
+      ctx.fill();
+      text(ctx, '▶', 367, y + (state.pointerDown ? 2 : 0), 15, '#ff806c', 'center', 2, 1000);
+    }
+    text(ctx, items[i] ?? '', 394, y + (i === state.pauseIndex && state.pointerDown ? 2 : 0), 20, '#fff', 'left', 4, 950);
   }
   text(ctx, 'ESC RESUMES', CONFIG.canvas.width * 0.5, 379, 11, '#c7d3df', 'center', 3, 800);
 }
 
-function drawResult(ctx: CanvasRenderingContext2D, state: RenderState): void {
+function drawGameOver(ctx: CanvasRenderingContext2D, state: RenderState): void {
   const winner = state.match?.winnerFighter ?? null;
   const won = winner?.playerSlot === 1;
   const winnerName = winner?.displayName.toUpperCase() ?? 'NO WINNER';
@@ -657,22 +663,27 @@ function drawResult(ctx: CanvasRenderingContext2D, state: RenderState): void {
     return `${index + 1}. ${fighter?.displayName.toUpperCase() ?? 'FIGHTER'}`;
   }).join('  ·  ');
   if (order) text(ctx, `OUT ORDER: ${order}`, CONFIG.canvas.width * 0.5, 289, 10, '#dce6ec', 'center', 2, 850);
-  const items = ['REPLAY', 'BACK TO MENU'];
+  const items = CONFIG.scene.gameOverActions;
   for (let i = 0; i < items.length; i += 1) {
     const y = 333 + i * 42;
-    if (i === state.resultIndex) text(ctx, '▶', 361, y, 15, '#ff806c', 'center', 2, 1000);
-    text(ctx, items[i] ?? '', 388, y, 20, '#fff', 'left', 4, 950);
+    if (i === state.gameOverIndex) {
+      roundedRectPath(ctx, 319, y - 17 + (state.pointerDown ? 2 : 0), 322, 34, 8);
+      ctx.fillStyle = state.pointerDown ? 'rgba(255,107,92,0.52)' : 'rgba(255,107,92,0.28)';
+      ctx.fill();
+      text(ctx, '▶', 361, y + (state.pointerDown ? 2 : 0), 15, '#ff806c', 'center', 2, 1000);
+    }
+    text(ctx, items[i] ?? '', 388, y + (i === state.gameOverIndex && state.pointerDown ? 2 : 0), 20, '#fff', 'left', 4, 950);
   }
 }
 
 export function renderGame(ctx: CanvasRenderingContext2D, state: RenderState): void {
   ctx.save();
-  const shake = state.screen === 'match' && !state.paused ? state.match?.shake ?? 0 : 0;
+  const shake = state.screen === SCENE.GAME && !state.paused ? state.match?.shake ?? 0 : 0;
   if (shake > 0) ctx.translate((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake);
   const cameraX = state.match?.cameraX ?? 0;
   drawBackdrop(ctx, cameraX, state.elapsed, state.lowQuality);
   drawWorld(ctx, cameraX);
-  if (state.match && (state.screen === 'match' || state.screen === 'result')) {
+  if (state.match && (state.screen === SCENE.GAME || state.screen === SCENE.GAME_OVER)) {
     drawHud(ctx, state.match, state.touchMode);
   } else {
     const match = state.match;
@@ -683,12 +694,12 @@ export function renderGame(ctx: CanvasRenderingContext2D, state: RenderState): v
       ctx.restore();
     }
   }
-  if (state.screen === 'menu') drawMenu(ctx, state);
-  else if (state.screen === 'options') drawOptions(ctx, state);
-  else if (state.screen === 'custom') drawCustomGame(ctx, state);
-  else if (state.screen === 'match' && state.paused) drawPause(ctx, state);
-  else if (state.screen === 'result') drawResult(ctx, state);
-  if (state.toastTimer > 0 && state.toast && state.screen !== 'match') {
+  if (state.screen === SCENE.MENU) drawMenu(ctx, state);
+  else if (state.screen === SCENE.OPTIONS) drawOptions(ctx, state);
+  else if (state.screen === SCENE.CUSTOM) drawCustomGame(ctx, state);
+  else if (state.screen === SCENE.GAME && state.paused) drawPause(ctx, state);
+  else if (state.screen === SCENE.GAME_OVER) drawGameOver(ctx, state);
+  if (state.toastTimer > 0 && state.toast && state.screen !== SCENE.GAME) {
     panel(ctx, CONFIG.canvas.width * 0.5 - 190, 29, 380, 45, 'rgba(255,225,107,0.92)');
     text(ctx, state.toast, CONFIG.canvas.width * 0.5, 52, 14, INK, 'center', 2, 950);
   }

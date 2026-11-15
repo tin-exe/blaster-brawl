@@ -1,10 +1,39 @@
 export type WeaponId = 'pistol' | 'shotgun' | 'rocket';
 
+export const SCENE = {
+  MENU: 'menu',
+  OPTIONS: 'options',
+  CUSTOM: 'custom',
+  GAME: 'game',
+  GAME_OVER: 'gameOver',
+} as const;
+
+export const SCENE_EVENTS = {
+  START_GAME: 'scene:start-game',
+  GAME_OVER: 'scene:game-over',
+  RESTART_GAME: 'scene:restart-game',
+  RETURN_TO_MENU: 'scene:return-to-menu',
+  SHUTDOWN: 'scene:shutdown',
+} as const;
+
+const CUSTOM_GAME_FIELDS = ['mode', 'bots', 'difficulty', 'stocks', 'weapons'] as const;
+
 export const CONFIG = {
   title: 'BLASTER BRAWL',
   version: 1,
   locale: 'en',
   canvas: { width: 960, height: 540, targetFps: 60, maxCatchUpSteps: 5 },
+  scene: {
+    customFields: CUSTOM_GAME_FIELDS,
+    customStartIndex: CUSTOM_GAME_FIELDS.length,
+    customBackIndex: CUSTOM_GAME_FIELDS.length + 1,
+    customRowCount: CUSTOM_GAME_FIELDS.length + 2,
+    optionsRowCount: 10,
+    pauseActions: ['RESUME', 'RESTART MATCH', 'MAIN MENU'] as const,
+    pauseActionIndex: { resume: 0, restart: 1, mainMenu: 2 },
+    gameOverActions: ['REPLAY', 'BACK TO MENU'] as const,
+    gameOverActionIndex: { replay: 0, menu: 1 },
+  },
   world: {
     width: 1536,
     height: 720,
