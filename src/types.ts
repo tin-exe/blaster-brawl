@@ -48,6 +48,7 @@ export interface Fighter {
   botJumpCooldown: number;
   botAimOffset: number;
   animationTime: number;
+  landingTimer: number;
   contactCooldown: number;
   shieldTime: number;
   overdriveTime: number;
@@ -79,6 +80,8 @@ export interface Particle {
   color: string;
   gravity: number;
   square: boolean;
+  ring: boolean;
+  expansion: number;
 }
 
 export interface Pickup {

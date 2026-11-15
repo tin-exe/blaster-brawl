@@ -61,6 +61,7 @@ export function createFighter(id: FighterId, spawn: SpawnPoint, settings: GameSe
     botJumpCooldown: 0,
     botAimOffset: 0,
     animationTime: 0,
+    landingTimer: 0,
     contactCooldown: 0,
     shieldTime: 0,
     overdriveTime: 0,
@@ -85,6 +86,7 @@ export function respawnFighter(fighter: Fighter, spawn: SpawnPoint): void {
   fighter.fireCooldown = 0;
   fighter.shootTimer = 0;
   fighter.hitTimer = 0;
+  fighter.landingTimer = 0;
   fighter.invulnerable = CONFIG.fighters.invulnerabilitySeconds;
   fighter.respawnTimer = 0;
   fighter.dead = false;

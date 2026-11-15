@@ -86,6 +86,8 @@ describe('match roster and round lifecycle', () => {
     match.update(step, neutralInput);
     expect(target.shieldTime).toBe(0);
     expect(target.vx).toBeCloseTo(0, 4);
+    expect(match.hitstopRemaining).toBeGreaterThan(0);
+    expect(match.screenFlash).toBeGreaterThan(0);
   });
 
   it('routes Player 2 movement without moving Player 1 in a local game', () => {

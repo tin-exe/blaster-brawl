@@ -3,7 +3,7 @@ import { ObjectPool } from '../engine/pool';
 import type { Particle } from '../types';
 
 function makeParticle(): Particle {
-  return { active: false, x: 0, y: 0, vx: 0, vy: 0, radius: 2, life: 0, maxLife: 0, color: '#fff', gravity: 0, square: false };
+  return { active: false, x: 0, y: 0, vx: 0, vy: 0, radius: 2, life: 0, maxLife: 0, color: '#fff', gravity: 0, square: false, ring: false, expansion: 0 };
 }
 
 export class EffectSystem {
@@ -37,7 +37,29 @@ export class EffectSystem {
       particle.color = color;
       particle.gravity = gravity;
       particle.square = square;
+      particle.ring = false;
+      particle.expansion = 0;
     }
+  }
+
+  ring(x: number, y: number, color: string, startRadius: number, endRadius: number, lifetime = 0.24): void {
+    if (this.activeCount >= this.maxActiveParticles) return;
+    const particle = this.pool.acquire();
+    if (!particle) return;
+    const duration = Math.max(0.04, lifetime);
+    this.activeCount += 1;
+    particle.x = x;
+    particle.y = y;
+    particle.vx = 0;
+    particle.vy = 0;
+    particle.radius = startRadius;
+    particle.life = duration;
+    particle.maxLife = duration;
+    particle.color = color;
+    particle.gravity = 0;
+    particle.square = false;
+    particle.ring = true;
+    particle.expansion = Math.max(0, endRadius - startRadius) / duration;
   }
 
   dust(x: number, y: number, color: string): void {
@@ -58,6 +80,7 @@ export class EffectSystem {
       if (!particle.active) continue;
       particle.life -= dt;
       if (particle.life <= 0) { particle.active = false; this.activeCount = Math.max(0, this.activeCount - 1); continue; }
+      if (particle.ring) { particle.radius += particle.expansion * dt; continue; }
       particle.vy += particle.gravity * dt;
       particle.x += particle.vx * dt;
       particle.y += particle.vy * dt;

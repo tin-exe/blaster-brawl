@@ -276,11 +276,17 @@ function drawFighter(ctx: CanvasRenderingContext2D, fighter: Fighter): void {
   const run = fighter.grounded && Math.abs(fighter.vx) > 30;
   const bob = run ? Math.sin(fighter.animationTime * 18) * 2.5 : fighter.grounded ? Math.sin(fighter.animationTime * 3) * 1.2 : 0;
   const fallTilt = !fighter.grounded && fighter.vy > 180 ? Math.min(0.42, fighter.vy / 2100) : 0;
+  const jumpStretch = clampNumber(-fighter.vy / CONFIG.fighters.jumpVelocity, 0, 1) * 0.08;
+  const fallSquash = clampNumber(fighter.vy / CONFIG.fighters.maxFallSpeed, 0, 1) * 0.045;
+  const landingSquash = clampNumber(fighter.landingTimer / CONFIG.feedback.landSquashSeconds, 0, 1) * 0.13;
+  const hitPulse = fighter.hitTimer > 0 ? Math.sin(fighter.animationTime * 48) * 0.035 : 0;
+  const bodyScaleY = clampNumber(1 + jumpStretch - fallSquash - landingSquash + hitPulse, 0.82, 1.16);
+  const bodyScaleX = 2 - bodyScaleY;
   const blink = fighter.invulnerable > 0 && Math.floor(fighter.animationTime * 17) % 2 === 0;
   ctx.save();
   ctx.translate(fighter.x, fighter.y + bob + fighter.height * 0.5);
-  ctx.rotate((fighter.facing < 0 ? -1 : 1) * fallTilt);
-  ctx.scale(fighter.facing, 1);
+  ctx.rotate((fighter.facing < 0 ? -1 : 1) * fallTilt + (fighter.shootTimer > 0 ? -0.06 : 0));
+  ctx.scale(fighter.facing * bodyScaleX, bodyScaleY);
   ctx.globalAlpha = blink ? 0.62 : 1;
 
   if (fighter.shieldTime > 0 || fighter.overdriveTime > 0) {
@@ -395,7 +401,21 @@ function drawProjectile(ctx: CanvasRenderingContext2D, projectile: Projectile): 
   ctx.translate(projectile.x, projectile.y);
   ctx.rotate(Math.atan2(projectile.vy, projectile.vx));
   const color = CONFIG.weapons[projectile.weapon].color;
-  if (projectile.weapon === 'rocket') {
+  if (projectile.weapon === 'railgun') {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.moveTo(-projectile.radius * 5, 0);
+    ctx.lineTo(projectile.radius * 1.4, 0);
+    ctx.stroke();
+    ctx.fillStyle = '#eaffff';
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(0, 0, projectile.radius * 1.25, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  } else if (projectile.weapon === 'rocket') {
     ctx.fillStyle = color;
     ctx.strokeStyle = INK;
     ctx.lineWidth = 3;
@@ -418,9 +438,16 @@ function drawProjectile(ctx: CanvasRenderingContext2D, projectile: Projectile): 
 function drawParticles(ctx: CanvasRenderingContext2D, particles: readonly Particle[]): void {
   for (const particle of particles) {
     if (!particle.active) continue;
-    ctx.globalAlpha = Math.max(0, particle.life / particle.maxLife);
+    const alpha = Math.max(0, particle.life / particle.maxLife);
+    ctx.globalAlpha = alpha;
     ctx.fillStyle = particle.color;
-    if (particle.square) ctx.fillRect(particle.x - particle.radius * 0.5, particle.y - particle.radius * 0.5, particle.radius, particle.radius);
+    if (particle.ring) {
+      ctx.strokeStyle = particle.color;
+      ctx.lineWidth = 1.5 + alpha * 3.5;
+      ctx.beginPath();
+      ctx.arc(particle.x, particle.y, particle.radius, 0, Math.PI * 2);
+      ctx.stroke();
+    } else if (particle.square) ctx.fillRect(particle.x - particle.radius * 0.5, particle.y - particle.radius * 0.5, particle.radius, particle.radius);
     else {
       ctx.beginPath();
       ctx.arc(particle.x, particle.y, particle.radius, 0, Math.PI * 2);
@@ -448,6 +475,17 @@ function drawFighterCard(ctx: CanvasRenderingContext2D, fighter: Fighter, x: num
   const weapon = CONFIG.weapons[fighter.weapon];
   const weaponText = !fighter.stocks ? 'OUT' : !weaponsEnabled ? 'UNARMED' : fighter.dead ? 'RESPAWNING' : `${weapon.label} · ${fighter.ammo[fighter.weapon]}`;
   text(ctx, weaponText, x + 9, y + 55, Math.min(10, width / 15), fighter.dead ? '#c4cad3' : weaponsEnabled ? weapon.color : '#fff', 'left', 2, 900);
+  const buffTime = Math.max(fighter.shieldTime, fighter.overdriveTime);
+  if (buffTime > 0) {
+    const color = fighter.shieldTime > 0 ? CONFIG.powerups.shield.color : CONFIG.powerups.overdrive.color;
+    const meterWidth = width - 18;
+    roundedRectPath(ctx, x + 9, y + 60, meterWidth, 3, 2);
+    ctx.fillStyle = 'rgba(255,255,255,0.22)';
+    ctx.fill();
+    roundedRectPath(ctx, x + 9, y + 60, meterWidth * clampNumber(buffTime / CONFIG.powerups.durationSeconds, 0, 1), 3, 2);
+    ctx.fillStyle = color;
+    ctx.fill();
+  }
 }
 
 function drawOffscreenIndicators(ctx: CanvasRenderingContext2D, match: MatchScene): void {
@@ -500,6 +538,13 @@ function drawHud(ctx: CanvasRenderingContext2D, match: MatchScene, touchMode: bo
   for (const fighter of match.fighters) drawFighter(ctx, fighter);
   ctx.restore();
   drawOffscreenIndicators(ctx, match);
+  if (match.screenFlash > 0) {
+    ctx.save();
+    ctx.globalAlpha = match.screenFlash;
+    ctx.fillStyle = match.screenFlashColor;
+    ctx.fillRect(0, 0, CONFIG.canvas.width, CONFIG.canvas.height);
+    ctx.restore();
+  }
   if (match.toastTimer > 0) {
     panel(ctx, CONFIG.canvas.width * 0.5 - 200, 128, 400, 42, 'rgba(255,225,107,0.92)');
     text(ctx, match.toast, CONFIG.canvas.width * 0.5, 149, 14, INK, 'center', 2, 950);
@@ -567,6 +612,14 @@ function drawMenu(ctx: CanvasRenderingContext2D, state: RenderState): void {
   const rowHeight = CONFIG.menu.rowHeight;
   const height = 28 + rowHeight * CONFIG.menu.items.length + 16;
   const y = 180;
+  const hints: Record<string, string> = {
+    play: 'QUICK 1V1 · STARTS NOW',
+    campaign: 'A STORY RUN IS COMING SOON',
+    custom: 'CHOOSE THE RULES OF THE BRAWL',
+    library: 'MEET THE WEAPONS',
+    options: 'TUNE SOUND, CONTROLS & FEEL',
+    credits: 'THE CREW BEHIND THE BRAWL',
+  };
   panel(ctx, x, y, width, height);
   for (let i = 0; i < CONFIG.menu.items.length; i += 1) {
     const item = CONFIG.menu.items[i];
@@ -578,7 +631,12 @@ function drawMenu(ctx: CanvasRenderingContext2D, state: RenderState): void {
       ctx.fill();
       text(ctx, '▶', x + width - 23, centerY, 16, '#ff806c', 'center', 2, 1000);
     }
-    text(ctx, item.label, x + width - 42, centerY, 20, i === state.menuIndex ? '#fff8df' : '#fff', 'right', 4, 1000);
+    if (i === state.menuIndex) {
+      text(ctx, item.label, x + width - 42, centerY - 5, 17, '#fff8df', 'right', 4, 1000);
+      text(ctx, hints[item.id] ?? 'SELECT TO CONTINUE', x + width - 42, centerY + 11, 8, '#ffe16b', 'right', 2, 850);
+    } else {
+      text(ctx, item.label, x + width - 42, centerY, 20, '#fff', 'right', 4, 1000);
+    }
     if (!item.available) text(ctx, 'COMING SOON', x + 20, centerY + 12, 8, '#c7d3df', 'left', 2, 800);
   }
   text(ctx, '↑ / ↓ SELECT     ENTER CONFIRM', CONFIG.canvas.width - CONFIG.menu.rightMargin - 10, y + height + 24, 10, PAPER, 'right', 3, 850);
@@ -644,6 +702,8 @@ function drawPause(ctx: CanvasRenderingContext2D, state: RenderState): void {
   ctx.fillRect(0, 0, CONFIG.canvas.width, CONFIG.canvas.height);
   panel(ctx, 302, 151, 356, 252, 'rgba(22,31,50,0.97)');
   text(ctx, CONFIG.copy.paused, CONFIG.canvas.width * 0.5, 197, 34, '#ffe16b', 'center', 6, 1000);
+  const match = state.match;
+  if (match) text(ctx, `${match.arena.label} · ${match.config.mode === 'survival' ? `WAVE ${match.wave}` : matchModeLabel(match.config.mode)}`, CONFIG.canvas.width * 0.5, 226, 10, '#dce6ec', 'center', 2, 850);
   const items = CONFIG.scene.pauseActions;
   for (let i = 0; i < items.length; i += 1) {
     const y = 260 + i * 42;

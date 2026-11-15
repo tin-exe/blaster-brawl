@@ -15,6 +15,7 @@ export function fireWeapon(fighter: Fighter, aimAngle: number, projectiles: Proj
   const originX = fighter.x + Math.cos(aimAngle) * fighter.width * 0.48;
   const originY = fighter.y + fighter.height * 0.43 + Math.sin(aimAngle) * fighter.height * 0.23;
   effects.muzzle(originX, originY, definition.color);
+  if (fighter.weapon === 'railgun') effects.ring(originX, originY, definition.color, 4, 34, 0.14);
   for (let pellet = 0; pellet < definition.pellets; pellet += 1) {
     const angle = aimAngle + (random() - 0.5) * definition.spreadRadians;
     projectiles.spawn(fighter.id, fighter.weapon, originX, originY, angle);

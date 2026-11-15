@@ -48,6 +48,9 @@ export class MatchScene {
   cameraX = 0;
   shake = 0;
   shakeIntensity: number;
+  hitstopRemaining = 0;
+  screenFlash = 0;
+  screenFlashColor = '#fff8df';
   toast = '';
   toastTimer = 0;
   elapsed = 0;
@@ -183,6 +186,12 @@ export class MatchScene {
     this.elapsed += dt;
     this.toastTimer = Math.max(0, this.toastTimer - dt);
     this.shake = Math.max(0, this.shake - CONFIG.feedback.shakeDecay * dt);
+    this.screenFlash = Math.max(0, this.screenFlash - CONFIG.feedback.flashFadePerSecond * dt);
+    if (this.hitstopRemaining > 0) {
+      this.hitstopRemaining = Math.max(0, this.hitstopRemaining - dt);
+      this.effects.update(dt * 0.35);
+      return this.winner;
+    }
     this.effects.update(dt);
     this.updatePickups(dt);
 
@@ -264,11 +273,13 @@ export class MatchScene {
       respawnFighter(fighter, spawn);
     }
     this.resetPickups();
+    this.audio.play('waveStart');
     this.showToast(`WAVE ${this.wave} — ${activeBots} ${activeBots === 1 ? 'ENEMY' : 'ENEMIES'} INCOMING!`);
   }
 
   private updateFighter(fighter: Fighter, dt: number, input: PlayerInput, botAction: BotAction | null): void {
     fighter.animationTime += dt;
+    fighter.landingTimer = Math.max(0, fighter.landingTimer - dt);
     fighter.fireCooldown = Math.max(0, fighter.fireCooldown - dt);
     fighter.shootTimer = Math.max(0, fighter.shootTimer - dt);
     fighter.hitTimer = Math.max(0, fighter.hitTimer - dt);
@@ -340,7 +351,12 @@ export class MatchScene {
     const nextBottom = fighter.y + fighter.height;
     const landing = landingPlatform(previousBottom, nextBottom, fighter.x - fighter.width * 0.5, fighter.x + fighter.width * 0.5, this.platforms);
     if (landing) {
-      if (!fighter.grounded && fighter.vy > 260) this.effects.dust(fighter.x, landing.y, '#f4d993');
+      if (!fighter.grounded && fighter.vy > 220) {
+        this.effects.dust(fighter.x, landing.y, '#f4d993');
+        this.effects.ring(fighter.x, landing.y, fighter.color, 7, Math.min(56, 18 + fighter.vy * 0.05), 0.2);
+        fighter.landingTimer = CONFIG.feedback.landSquashSeconds;
+        this.audio.play('land');
+      }
       fighter.y = landing.y - fighter.height;
       fighter.vy = 0;
       fighter.grounded = true;
@@ -445,6 +461,10 @@ export class MatchScene {
   private detonate(x: number, y: number, weaponId: 'rocket', directTarget: Fighter | null, owner: FighterId): void {
     const weapon = CONFIG.weapons[weaponId];
     this.effects.explosion(x, y, weapon.color);
+    this.effects.ring(x, y, weapon.color, 18, weapon.explosionRadius + 28, 0.34);
+    this.screenFlashColor = '#ffbc79';
+    this.screenFlash = Math.max(this.screenFlash, CONFIG.feedback.rocketFlashAlpha);
+    this.hitstopRemaining = Math.max(this.hitstopRemaining, CONFIG.feedback.rocketHitStopSeconds);
     this.audio.play('explosion', 'rocket');
     this.pauseShake(CONFIG.feedback.rocketShake);
     for (const target of this.fighters) {
@@ -463,7 +483,11 @@ export class MatchScene {
     if (target.shieldTime > 0) {
       target.shieldTime = 0;
       this.effects.burst(target.x, target.y + target.height * 0.45, CONFIG.powerups.shield.color, CONFIG.particles.impactCount * 2, CONFIG.particles.impactSpeed * 1.3, CONFIG.particles.impactLifetime, 0, true);
-      this.audio.play('pickup');
+      this.effects.ring(target.x, target.y + target.height * 0.45, CONFIG.powerups.shield.color, 12, 68, 0.26);
+      this.screenFlashColor = CONFIG.powerups.shield.color;
+      this.screenFlash = Math.max(this.screenFlash, CONFIG.feedback.shieldFlashAlpha);
+      this.hitstopRemaining = Math.max(this.hitstopRemaining, CONFIG.feedback.shieldHitStopSeconds);
+      this.audio.play('shieldBreak');
       this.pauseShake(1.8);
       return;
     }
@@ -476,6 +500,10 @@ export class MatchScene {
     target.grounded = false;
     target.hitTimer = CONFIG.combat.hitStunSeconds;
     this.effects.burst(target.x, target.y + target.height * 0.42, '#fff6d5', CONFIG.particles.impactCount, CONFIG.particles.impactSpeed, CONFIG.particles.impactLifetime, 0, true);
+    this.effects.ring(target.x, target.y + target.height * 0.45, weapon.color, 8, weaponId === 'rocket' ? 76 : 48, 0.22);
+    this.screenFlashColor = '#fff1cf';
+    this.screenFlash = Math.max(this.screenFlash, weaponId === 'rocket' ? CONFIG.feedback.rocketFlashAlpha : CONFIG.feedback.hitFlashAlpha);
+    this.hitstopRemaining = Math.max(this.hitstopRemaining, weaponId === 'rocket' ? CONFIG.feedback.rocketHitStopSeconds : CONFIG.feedback.hitStopSeconds);
     this.audio.play('hit');
     this.pauseShake(weaponId === 'rocket' ? CONFIG.feedback.rocketShake : CONFIG.feedback.hitShake);
   }
@@ -514,6 +542,7 @@ export class MatchScene {
           const powerUp = CONFIG.powerups[pickup.powerUp];
           this.showToast(`${fighter.displayName.toUpperCase()} — ${powerUp.label}!`);
           this.effects.burst(pickup.x, pickup.y, powerUp.color, CONFIG.particles.pickupCount * 2, CONFIG.particles.pickupSpeed * 1.3, CONFIG.particles.pickupLifetime, CONFIG.particles.pickupGravity, true);
+          this.effects.ring(pickup.x, pickup.y, powerUp.color, 12, 56, 0.28);
         } else {
           fighter.weapon = pickup.weapon;
           fighter.ammo[pickup.weapon] = Math.min(weapon.ammo, fighter.ammo[pickup.weapon] + weapon.pickupAmmo);
@@ -523,7 +552,7 @@ export class MatchScene {
         pickup.active = false;
         const fighterCountScale = 1 + Math.max(0, this.fighters.length - 2) * CONFIG.match.pickupRespawnRatePerFighter;
         pickup.respawnTimer = CONFIG.combat.pickupRespawnSeconds / fighterCountScale;
-        this.audio.play('pickup');
+        this.audio.play(pickup.powerUp ? 'powerup' : 'pickup');
         break;
       }
     }
