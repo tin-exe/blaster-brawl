@@ -3,7 +3,8 @@ import type { WeaponId } from './config';
 export type FighterId = 'human' | 'player2' | 'bot' | 'bot2' | 'bot3';
 export type FighterController = 'human' | 'bot';
 export type DifficultyLevel = 'easy' | 'normal' | 'hard';
-export type MatchMode = 'versus' | 'ffa' | 'local' | 'duoBots';
+export type MatchMode = 'versus' | 'ffa' | 'local' | 'duoBots' | 'survival';
+export type PowerUpId = 'shield' | 'overdrive';
 export type MarkerShape = 'circle' | 'square' | 'triangle' | 'diamond' | 'star';
 export type HatStyle = 'cap' | 'cowboy' | 'crown';
 
@@ -48,6 +49,8 @@ export interface Fighter {
   botAimOffset: number;
   animationTime: number;
   contactCooldown: number;
+  shieldTime: number;
+  overdriveTime: number;
 }
 
 export interface Projectile {
@@ -61,6 +64,7 @@ export interface Projectile {
   weapon: WeaponId;
   life: number;
   trailTimer: number;
+  hitFighters?: FighterId[];
 }
 
 export interface Particle {
@@ -82,6 +86,7 @@ export interface Pickup {
   x: number;
   y: number;
   weapon: WeaponId;
+  powerUp: PowerUpId | null;
   phase: number;
   respawnTimer: number;
 }

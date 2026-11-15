@@ -1,5 +1,5 @@
 import { CONFIG, SCENE } from '../config';
-import type { Fighter, HatStyle, Particle, Projectile } from '../types';
+import type { Fighter, HatStyle, Particle, Pickup, Platform, Projectile } from '../types';
 import type { MatchScene } from '../scenes/match';
 import type { GameSettings } from '../storage/settings';
 import { matchModeLabel } from '../game/match-config';
@@ -90,12 +90,12 @@ function polygon(ctx: CanvasRenderingContext2D, points: readonly [number, number
   ctx.fill();
 }
 
-function drawBackdrop(ctx: CanvasRenderingContext2D, cameraX: number, elapsed: number, lowQuality = false): void {
+function drawBackdrop(ctx: CanvasRenderingContext2D, cameraX: number, elapsed: number, lowQuality = false, arena: (typeof CONFIG.world.arenas)[number] = CONFIG.world.arenas[0]): void {
   const parallaxX = lowQuality ? 0 : cameraX;
   const sky = ctx.createLinearGradient(0, 0, 0, CONFIG.canvas.height);
-  sky.addColorStop(0, '#7bdcf4');
+  sky.addColorStop(0, arena.skyTop);
   sky.addColorStop(0.62, '#c7f1f5');
-  sky.addColorStop(1, '#ffe8a9');
+  sky.addColorStop(1, arena.skyBottom);
   ctx.fillStyle = sky;
   ctx.fillRect(0, 0, CONFIG.canvas.width, CONFIG.canvas.height);
 
@@ -180,33 +180,33 @@ function drawHut(ctx: CanvasRenderingContext2D, x: number, ground: number): void
   ctx.restore();
 }
 
-function drawWorld(ctx: CanvasRenderingContext2D, cameraX: number): void {
+function drawWorld(ctx: CanvasRenderingContext2D, cameraX: number, platforms: readonly Platform[], arena: (typeof CONFIG.world.arenas)[number]): void {
   ctx.save();
   ctx.translate(-cameraX, 0);
   for (const x of [125, 625, 1015, 1430]) drawTree(ctx, x, 410, x > 1200 ? 0.86 : 1);
   for (const x of [370, 890, 1295]) drawHut(ctx, x, 415);
 
-  for (const platform of CONFIG.world.platforms) {
+  for (const platform of platforms) {
     roundedRectPath(ctx, platform.x, platform.y, platform.width, platform.height, 10);
-    ctx.fillStyle = '#855b43';
+    ctx.fillStyle = arena.trim;
     ctx.fill();
     ctx.strokeStyle = INK;
     ctx.lineWidth = 6;
     ctx.stroke();
     roundedRectPath(ctx, platform.x - 2, platform.y - 9, platform.width + 4, 19, 9);
-    ctx.fillStyle = '#70b84e';
+    ctx.fillStyle = arena.surface;
     ctx.fill();
     ctx.strokeStyle = INK;
     ctx.lineWidth = 5;
     ctx.stroke();
-    ctx.fillStyle = '#a97952';
+    ctx.fillStyle = arena.id === 'foundry' ? '#77768a' : arena.id === 'skyline' ? '#67829b' : '#a97952';
     for (let rock = 0; rock < Math.floor(platform.width / 48); rock += 1) {
       const rx = platform.x + 18 + rock * 47;
       ctx.beginPath();
       ctx.ellipse(rx, platform.y + 25 + (rock % 2) * 6, 14 + (rock % 3) * 2, 8, (rock % 2) * 0.2, 0, Math.PI * 2);
       ctx.fill();
     }
-    ctx.strokeStyle = '#3f7b49';
+    ctx.strokeStyle = arena.id === 'meadow' ? '#3f7b49' : arena.surface;
     ctx.lineWidth = 3;
     for (let tuft = 0; tuft < Math.floor(platform.width / 41); tuft += 1) {
       const tx = platform.x + 17 + tuft * 40;
@@ -283,6 +283,16 @@ function drawFighter(ctx: CanvasRenderingContext2D, fighter: Fighter): void {
   ctx.scale(fighter.facing, 1);
   ctx.globalAlpha = blink ? 0.62 : 1;
 
+  if (fighter.shieldTime > 0 || fighter.overdriveTime > 0) {
+    ctx.beginPath();
+    ctx.arc(0, 0, 31, 0, Math.PI * 2);
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = fighter.shieldTime > 0 ? CONFIG.powerups.shield.color : CONFIG.powerups.overdrive.color;
+    ctx.globalAlpha = 0.72 + Math.sin(fighter.animationTime * 8) * 0.16;
+    ctx.stroke();
+    ctx.globalAlpha = blink ? 0.62 : 1;
+  }
+
   const outline = fighter.hitTimer > 0 ? '#fff8df' : INK;
   ctx.lineJoin = 'round';
   ctx.lineCap = 'round';
@@ -339,7 +349,7 @@ function drawFighter(ctx: CanvasRenderingContext2D, fighter: Fighter): void {
   roundedRectPath(ctx, -1, -4, 17, 8, 3);
   ctx.fill();
   ctx.stroke();
-  ctx.fillStyle = fighter.weapon === 'rocket' ? '#ff8a4e' : fighter.weapon === 'shotgun' ? '#74f0aa' : '#ffe16b';
+  ctx.fillStyle = CONFIG.weapons[fighter.weapon].color;
   ctx.fillRect(10, -2, 7, 4);
   ctx.restore();
   const labelWidth = Math.max(70, fighter.displayName.length * 7 + 31);
@@ -353,9 +363,10 @@ function drawFighter(ctx: CanvasRenderingContext2D, fighter: Fighter): void {
   text(ctx, `${fighter.markerNumber} ${fighter.displayName}`, fighter.x + 6, fighter.y - 19, 10, PAPER, 'center', 2, 950);
 }
 
-function drawPickup(ctx: CanvasRenderingContext2D, pickup: { x: number; y: number; weapon: string; phase: number }): void {
+function drawPickup(ctx: CanvasRenderingContext2D, pickup: Pickup): void {
   const config = CONFIG.weapons[pickup.weapon as keyof typeof CONFIG.weapons];
-  if (!config) return;
+  const powerConfig = pickup.powerUp ? CONFIG.powerups[pickup.powerUp] : null;
+  if (!config || (pickup.powerUp && !powerConfig)) return;
   const float = Math.sin(pickup.phase) * CONFIG.combat.pickupBobPixels;
   ctx.save();
   ctx.translate(pickup.x, pickup.y + float);
@@ -369,12 +380,13 @@ function drawPickup(ctx: CanvasRenderingContext2D, pickup: { x: number; y: numbe
   ctx.stroke();
   ctx.beginPath();
   ctx.arc(0, 0, 11, 0, Math.PI * 2);
-  ctx.fillStyle = config.color;
+  ctx.fillStyle = powerConfig?.color ?? config.color;
   ctx.fill();
   ctx.strokeStyle = INK;
   ctx.lineWidth = 3;
   ctx.stroke();
-  text(ctx, pickup.weapon === 'pistol' ? 'P' : pickup.weapon === 'shotgun' ? 'S' : 'R', 0, 1, 13, INK, 'center', 0, 1000);
+  const mark = pickup.powerUp === 'shield' ? '◆' : pickup.powerUp === 'overdrive' ? 'O' : pickup.weapon === 'pistol' ? 'P' : pickup.weapon === 'shotgun' ? 'S' : pickup.weapon === 'rocket' ? 'R' : 'L';
+  text(ctx, mark, 0, 1, 13, INK, 'center', 0, 1000);
   ctx.restore();
 }
 
@@ -473,8 +485,11 @@ function drawHud(ctx: CanvasRenderingContext2D, match: MatchScene, touchMode: bo
     const fighter = match.fighters[index];
     if (fighter) drawFighterCard(ctx, fighter, margin + index * (width + gap), margin, width, match.config.stocks, match.config.weaponsEnabled);
   }
-  panel(ctx, CONFIG.canvas.width * 0.5 - 47, 88, 94, 35, 'rgba(25,37,58,0.9)');
-  text(ctx, `${Math.floor(match.elapsed / 60).toString().padStart(2, '0')}:${Math.floor(match.elapsed % 60).toString().padStart(2, '0')}`, CONFIG.canvas.width * 0.5, 105, 16, PAPER, 'center', 3, 900);
+  panel(ctx, CONFIG.canvas.width * 0.5 - 86, 88, 172, 35, 'rgba(25,37,58,0.9)');
+  const centerLabel = match.config.mode === 'survival'
+    ? `WAVE ${String(match.wave).padStart(2, '0')} · ${match.arena.label}`
+    : `${Math.floor(match.elapsed / 60).toString().padStart(2, '0')}:${Math.floor(match.elapsed % 60).toString().padStart(2, '0')}`;
+  text(ctx, centerLabel, CONFIG.canvas.width * 0.5, 105, match.config.mode === 'survival' ? 13 : 16, PAPER, 'center', 3, 900);
   text(ctx, touchMode ? 'MOVE · JUMP · SHOOT · SWAP · PAUSE' : CONFIG.copy.controls, CONFIG.canvas.width * 0.5, CONFIG.canvas.height - 16, 9, '#fff8df', 'center', 3, 850);
 
   ctx.save();
@@ -646,7 +661,7 @@ function drawPause(ctx: CanvasRenderingContext2D, state: RenderState): void {
 function drawGameOver(ctx: CanvasRenderingContext2D, state: RenderState): void {
   const winner = state.match?.winnerFighter ?? null;
   const won = winner?.playerSlot === 1;
-  const winnerName = winner?.displayName.toUpperCase() ?? 'NO WINNER';
+  const winnerName = state.match?.config.mode === 'survival' ? `RUN ENDED AT WAVE ${state.match.wave}` : winner?.displayName.toUpperCase() ?? 'NO WINNER';
   ctx.fillStyle = 'rgba(12,18,32,0.56)';
   ctx.fillRect(0, 0, CONFIG.canvas.width, CONFIG.canvas.height);
   panel(ctx, 265, 112, 430, 324, 'rgba(22,31,50,0.96)');
@@ -657,7 +672,7 @@ function drawGameOver(ctx: CanvasRenderingContext2D, state: RenderState): void {
     polygon(ctx, [[x, y - 9], [x + 4, y - 2], [x + 12, y], [x + 4, y + 3], [x, y + 11], [x - 4, y + 3], [x - 12, y], [x - 4, y - 2]], ctx.fillStyle);
   }
   text(ctx, won ? CONFIG.copy.resultWin : CONFIG.copy.resultLose, CONFIG.canvas.width * 0.5, 219, 43, won ? '#ffe16b' : '#ff806c', 'center', 8, 1000);
-  text(ctx, `WINNER: ${winnerName}`, CONFIG.canvas.width * 0.5, 263, 14, PAPER, 'center', 3, 900);
+  text(ctx, state.match?.config.mode === 'survival' ? winnerName : `WINNER: ${winnerName}`, CONFIG.canvas.width * 0.5, 263, 14, PAPER, 'center', 3, 900);
   const order = state.match?.eliminationOrder.map((id, index) => {
     const fighter = state.match?.fighters.find((candidate) => candidate.id === id);
     return `${index + 1}. ${fighter?.displayName.toUpperCase() ?? 'FIGHTER'}`;
@@ -681,8 +696,10 @@ export function renderGame(ctx: CanvasRenderingContext2D, state: RenderState): v
   const shake = state.screen === SCENE.GAME && !state.paused ? state.match?.shake ?? 0 : 0;
   if (shake > 0) ctx.translate((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake);
   const cameraX = state.match?.cameraX ?? 0;
-  drawBackdrop(ctx, cameraX, state.elapsed, state.lowQuality);
-  drawWorld(ctx, cameraX);
+  const arena = state.match?.arena ?? CONFIG.world.arenas[0];
+  const platforms = state.match?.platforms ?? arena.platforms;
+  drawBackdrop(ctx, cameraX, state.elapsed, state.lowQuality, arena);
+  drawWorld(ctx, cameraX, platforms, arena);
   if (state.match && (state.screen === SCENE.GAME || state.screen === SCENE.GAME_OVER)) {
     drawHud(ctx, state.match, state.touchMode);
   } else {

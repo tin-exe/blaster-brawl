@@ -2,11 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { adjustMatchConfig, createMatchConfig, validateMatchConfig } from './match-config';
 
 describe('MatchConfig', () => {
-  it('provides the four reusable mode presets', () => {
+  it('provides the reusable match and survival mode presets', () => {
     expect(createMatchConfig('versus')).toMatchObject({ mode: 'versus', humanPlayers: 1, botCount: 1 });
     expect(createMatchConfig('ffa')).toMatchObject({ mode: 'ffa', humanPlayers: 1, botCount: 3 });
     expect(createMatchConfig('local')).toMatchObject({ mode: 'local', humanPlayers: 2, botCount: 0 });
     expect(createMatchConfig('duoBots')).toMatchObject({ mode: 'duoBots', humanPlayers: 2, botCount: 2 });
+    expect(createMatchConfig('survival')).toMatchObject({ mode: 'survival', humanPlayers: 1, botCount: 3 });
   });
 
   it('clamps stocks and bot count to the selected mode limits', () => {

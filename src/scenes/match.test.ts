@@ -30,7 +30,7 @@ function makeMatch(config: MatchConfig = createMatchConfig('versus')): MatchScen
 
 describe('match roster and round lifecycle', () => {
   it('lets the default bot approach across platform gaps instead of stalling', () => {
-    const match = makeMatch();
+    const match = new MatchScene(defaultSettings(), new AudioManager(true), createMatchConfig('versus', { weaponsEnabled: false }), { random: () => 0 });
     const startX = match.bot.x;
     for (let frame = 0; frame < CONFIG.canvas.targetFps * 2.5; frame += 1) match.update(step, neutralInput);
     expect(match.bot.x).toBeLessThan(startX - 170);
@@ -42,6 +42,50 @@ describe('match roster and round lifecycle', () => {
     const local = makeMatch(createMatchConfig('local'));
     expect(local.fighters.map((fighter) => fighter.playerSlot)).toEqual([1, 2]);
     expect(makeMatch(createMatchConfig('duoBots')).fighters).toHaveLength(4);
+    const survival = makeMatch(createMatchConfig('survival'));
+    expect(survival.fighters).toHaveLength(4);
+    expect(survival.fighters.filter((fighter) => fighter.controller === 'bot' && fighter.stocks > 0)).toHaveLength(1);
+  });
+
+  it('advances survival waves and brings in more enemy archetypes over time', () => {
+    const match = makeMatch(createMatchConfig('survival', { stocks: 3 }));
+    const firstBot = match.fighters.find((fighter) => fighter.id === 'bot')!;
+    match.human.invulnerable = 20;
+    firstBot.y = CONFIG.world.killY + 1;
+    match.update(step, neutralInput);
+    expect(match.wave).toBe(2);
+    expect(match.finished).toBe(false);
+    firstBot.y = CONFIG.world.killY + 1;
+    match.update(step, neutralInput);
+    expect(match.wave).toBe(3);
+    expect(match.fighters.filter((fighter) => fighter.controller === 'bot' && fighter.stocks > 0)).toHaveLength(2);
+  });
+
+  it('selects complete arena layouts and applies collected power-up effects', () => {
+    const skyline = new MatchScene(defaultSettings(), new AudioManager(true), createMatchConfig('versus'), { random: () => 0.9 });
+    expect(skyline.arena.id).toBe('skyline');
+    expect(skyline.platforms).toHaveLength(8);
+    for (const bot of skyline.fighters.filter((fighter) => fighter.controller === 'bot')) { bot.stocks = 0; bot.dead = true; }
+    const drop = skyline.pickups.items.find((pickup) => pickup.active)!;
+    drop.x = skyline.human.x;
+    drop.y = skyline.human.y + 20;
+    drop.powerUp = 'overdrive';
+    skyline.update(step, neutralInput);
+    expect(skyline.human.overdriveTime).toBeGreaterThan(0);
+  });
+
+  it('consumes a shield to absorb one incoming projectile hit', () => {
+    const match = makeMatch();
+    const target = match.human;
+    target.shieldTime = 4;
+    for (const fighter of match.fighters.filter((candidate) => candidate.controller === 'bot')) {
+      fighter.stocks = 0;
+      fighter.dead = true;
+    }
+    match.projectiles.spawn('bot', 'pistol', target.x - 10, target.y + 20, 0);
+    match.update(step, neutralInput);
+    expect(target.shieldTime).toBe(0);
+    expect(target.vx).toBeCloseTo(0, 4);
   });
 
   it('routes Player 2 movement without moving Player 1 in a local game', () => {

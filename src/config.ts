@@ -1,4 +1,4 @@
-export type WeaponId = 'pistol' | 'shotgun' | 'rocket';
+export type WeaponId = 'pistol' | 'shotgun' | 'rocket' | 'railgun';
 
 export const SCENE = {
   MENU: 'menu',
@@ -48,6 +48,29 @@ export const CONFIG = {
       { x: 650, y: 277, width: 250, height: 27 },
       { x: 1054, y: 329, width: 238, height: 27 },
     ],
+    arenas: [
+      {
+        id: 'meadow', label: 'MEADOW', surface: '#70b84e', trim: '#855b43', skyTop: '#7bdcf4', skyBottom: '#ffe8a9',
+        platforms: [
+          { x: 74, y: 448, width: 390, height: 54 }, { x: 516, y: 448, width: 496, height: 54 }, { x: 1064, y: 448, width: 392, height: 54 },
+          { x: 245, y: 329, width: 246, height: 27 }, { x: 650, y: 277, width: 250, height: 27 }, { x: 1054, y: 329, width: 238, height: 27 },
+        ],
+      },
+      {
+        id: 'foundry', label: 'SCRAPYARD', surface: '#d36f48', trim: '#555568', skyTop: '#606f91', skyBottom: '#f0b879',
+        platforms: [
+          { x: 74, y: 448, width: 390, height: 54 }, { x: 516, y: 448, width: 496, height: 54 }, { x: 1064, y: 448, width: 392, height: 54 },
+          { x: 178, y: 344, width: 250, height: 27 }, { x: 590, y: 266, width: 304, height: 27 }, { x: 1100, y: 344, width: 250, height: 27 },
+        ],
+      },
+      {
+        id: 'skyline', label: 'SKY BRIDGES', surface: '#49a8bd', trim: '#44577a', skyTop: '#657ee8', skyBottom: '#ffcaab',
+        platforms: [
+          { x: 74, y: 448, width: 310, height: 54 }, { x: 438, y: 448, width: 330, height: 54 }, { x: 818, y: 448, width: 310, height: 54 }, { x: 1178, y: 448, width: 278, height: 54 },
+          { x: 136, y: 326, width: 228, height: 27 }, { x: 500, y: 244, width: 242, height: 27 }, { x: 900, y: 315, width: 218, height: 27 }, { x: 1222, y: 260, width: 198, height: 27 },
+        ],
+      },
+    ] as const,
     pickupSpawns: [
       { x: 180, y: 406 }, { x: 750, y: 235 }, { x: 1190, y: 287 }, { x: 900, y: 406 }, { x: 420, y: 287 },
     ],
@@ -83,6 +106,14 @@ export const CONFIG = {
     pistol: { label: 'PISTOL', fireInterval: 0.28, damage: 1, knockback: 350, recoil: 58, ammo: 18, pickupAmmo: 12, projectileSpeed: 760, projectileRadius: 5, pellets: 1, spreadRadians: 0.025, lifetime: 1.55, explosionRadius: 0, color: '#ffe16b' },
     shotgun: { label: 'SHOTGUN', fireInterval: 0.82, damage: 0.68, knockback: 680, recoil: 142, ammo: 6, pickupAmmo: 4, projectileSpeed: 620, projectileRadius: 4, pellets: 7, spreadRadians: 0.52, lifetime: 0.74, explosionRadius: 0, color: '#74f0aa' },
     rocket: { label: 'ROCKET', fireInterval: 1.16, damage: 1.55, knockback: 790, recoil: 190, ammo: 3, pickupAmmo: 2, projectileSpeed: 390, projectileRadius: 9, pellets: 1, spreadRadians: 0, lifetime: 2.55, explosionRadius: 88, color: '#ff8a4e' },
+    railgun: { label: 'RAILGUN', fireInterval: 0.96, damage: 1.18, knockback: 610, recoil: 110, ammo: 4, pickupAmmo: 2, projectileSpeed: 1120, projectileRadius: 5, pellets: 1, spreadRadians: 0, lifetime: 1.35, explosionRadius: 0, color: '#68e8ff' },
+  },
+  powerups: {
+    dropChance: 0.55,
+    durationSeconds: 5.5,
+    overdriveFireScale: 0.58,
+    shield: { label: 'SHIELD', color: '#67e9ff' },
+    overdrive: { label: 'OVERDRIVE', color: '#ff71d4' },
   },
   combat: {
     hitStunSeconds: 0.22,
@@ -142,6 +173,7 @@ export const CONFIG = {
       { id: 'ffa', label: 'FREE-FOR-ALL', humanPlayers: 1, minBots: 1, maxBots: 3, defaultBots: 3 },
       { id: 'local', label: 'LOCAL 2 PLAYER', humanPlayers: 2, minBots: 0, maxBots: 0, defaultBots: 0 },
       { id: 'duoBots', label: '2 PLAYERS + BOTS', humanPlayers: 2, minBots: 1, maxBots: 3, defaultBots: 2 },
+      { id: 'survival', label: 'SURVIVAL WAVES', humanPlayers: 1, minBots: 1, maxBots: 3, defaultBots: 3 },
     ] as const,
   },
   particles: {
@@ -200,7 +232,7 @@ export const CONFIG = {
     oscillatorLimit: 8,
     soundGainScale: 0.18,
     minimumFrequency: 35,
-    weaponTone: { pistol: 1, shotgun: 1.22, rocket: 0.56 },
+    weaponTone: { pistol: 1, shotgun: 1.22, rocket: 0.56, railgun: 1.7 },
     sounds: {
       jump: { frequency: 410, duration: 0.13, wave: 'triangle', bend: 1.48 },
       shot: { frequency: 250, duration: 0.09, wave: 'square', bend: 0.48 },
@@ -266,4 +298,4 @@ export const CONFIG = {
   },
 } as const;
 
-export const WEAPON_ORDER: readonly WeaponId[] = ['pistol', 'shotgun', 'rocket'];
+export const WEAPON_ORDER: readonly WeaponId[] = ['pistol', 'shotgun', 'rocket', 'railgun'];

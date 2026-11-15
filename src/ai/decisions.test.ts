@@ -39,7 +39,7 @@ describe('bot tactical helpers', () => {
 
   it('prioritizes a reachable pickup only at the configured random threshold', () => {
     const self = actor('bot', 100, 200);
-    const pickup: Pickup = { active: true, x: 180, y: 190, weapon: 'rocket', phase: 0, respawnTimer: 0 };
+    const pickup: Pickup = { active: true, x: 180, y: 190, weapon: 'rocket', powerUp: null, phase: 0, respawnTimer: 0 };
     expect(selectPickup(self, [pickup], 0.8, 300, 0.2)).toBe(pickup);
     expect(selectPickup(self, [pickup], 0.2, 300, 0.8)).toBeNull();
   });

@@ -47,6 +47,7 @@ export function createFighter(id: FighterId, spawn: SpawnPoint, settings: GameSe
       pistol: CONFIG.weapons.pistol.ammo,
       shotgun: CONFIG.weapons.shotgun.ammo,
       rocket: CONFIG.weapons.rocket.ammo,
+      railgun: CONFIG.weapons.railgun.ammo,
     },
     fireCooldown: 0,
     shootTimer: 0,
@@ -61,6 +62,8 @@ export function createFighter(id: FighterId, spawn: SpawnPoint, settings: GameSe
     botAimOffset: 0,
     animationTime: 0,
     contactCooldown: 0,
+    shieldTime: 0,
+    overdriveTime: 0,
   };
 }
 
@@ -77,6 +80,7 @@ export function respawnFighter(fighter: Fighter, spawn: SpawnPoint): void {
     pistol: CONFIG.weapons.pistol.ammo,
     shotgun: CONFIG.weapons.shotgun.ammo,
     rocket: CONFIG.weapons.rocket.ammo,
+    railgun: CONFIG.weapons.railgun.ammo,
   };
   fighter.fireCooldown = 0;
   fighter.shootTimer = 0;
@@ -85,4 +89,6 @@ export function respawnFighter(fighter: Fighter, spawn: SpawnPoint): void {
   fighter.respawnTimer = 0;
   fighter.dead = false;
   fighter.contactCooldown = 0;
+  fighter.shieldTime = 0;
+  fighter.overdriveTime = 0;
 }

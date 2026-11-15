@@ -26,14 +26,15 @@ corepack pnpm preview:host # preview the production build on the local network
 
 ## Match modes and setup
 
-Select **Play** for a direct 1v1 match against one bot. **Custom Game** provides four configurations:
+Select **Play** for a direct 1v1 match against one bot. **Custom Game** provides five configurations:
 
 - **1v1 vs Bot** — one human and one bot.
 - **Free-for-All** — one human and 1–3 bots; the default is three bots.
 - **Local 2 Player** — two people on the same keyboard and no bots.
 - **2 Players + Bots** — two humans and 1–3 bots, all competing in the same free-for-all.
+- **Survival Waves** — one player faces escalating waves; each wave adds enemies up to the selected cap, with higher bot difficulty later in the run.
 
-The setup screen also selects Easy/Normal/Hard bot difficulty, 1–5 stocks, and weapons on/off. When weapons are off, pickups and firing are disabled; fighter contact provides a short cooldown-based shove so ring-outs are still possible. In every mode, ring-outs cost a stock, eliminated fighters leave the match, respawning fighters briefly flicker with invulnerability, and the last contender wins. FFA results list elimination order and the winner.
+The setup screen also selects Easy/Normal/Hard bot difficulty, 1–5 stocks, and weapons on/off. Survival opponents have distinct Rusher, Sniper, and Bruiser spacing behavior. When weapons are off, pickups and firing are disabled; fighter contact provides a short cooldown-based shove so ring-outs are still possible. Matches rotate among Meadow, Scrapyard, and Sky Bridges layouts. Ring-outs cost a stock, eliminated fighters leave the match, respawning fighters briefly flicker with invulnerability, and the last contender wins. FFA results list elimination order and the winner.
 
 ## Controls
 
@@ -45,7 +46,7 @@ The setup screen also selects Easy/Normal/Hard bot difficulty, 1–5 stocks, and
 | Switch weapon | K | Right Shift |
 | Pause / resume | Esc (pauses both players) | Esc (pauses both players) |
 
-Use ↑/↓ or W/S to navigate menus, Enter/Space to activate, and ←/→ to change a selected Custom Game or Options value. Matches use the pistol, shotgun and rocket launcher, each with different cadence, force, recoil and ammunition. Random weapon pickups reappear; pickup density and respawn pace scale with the fighter count.
+Use ↑/↓ or W/S to navigate menus, Enter/Space to activate, and ←/→ to change a selected Custom Game or Options value. Matches use the pistol, shotgun, rocket launcher, and piercing railgun, each with different cadence, force, recoil and ammunition. Weapon pickups respawn, while eliminated bots can drop temporary Shield or Overdrive power-ups.
 
 An attached gamepad also controls Player 1: left stick/D-pad to move, A (button 0) to jump/confirm, right trigger or X to shoot, Y to switch weapon, Start to pause, and B to go back. Keyboard or gamepad input hides the touch overlay; the next touch restores it on touch-capable devices.
 

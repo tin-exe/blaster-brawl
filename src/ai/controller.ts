@@ -37,6 +37,8 @@ export function createBotMemory(fighter: Fighter): BotMemory {
 export class BotController {
   private readonly memory = new Map<Fighter['id'], BotMemory>();
 
+  reset(): void { this.memory.clear(); }
+
   update(context: BotContext): BotAction {
     const { self, matchConfig, dt, random } = context;
     let state = this.memory.get(self.id);
@@ -129,11 +131,13 @@ export class BotController {
     if (!target) {
       const recovery = getRecoveryDirection(self, platforms, CONFIG.ai.recoveryMargin);
       const move = recovery.direction || (self.x < CONFIG.world.width * 0.5 ? 1 : -1);
-      const atEdge = distanceToPlatformEdge(self, move) < CONFIG.bot.edgeLookAhead;
+      const atEdge = distanceToPlatformEdge(self, move, platforms) < CONFIG.bot.edgeLookAhead;
       return { move, jump: self.grounded && atEdge && self.jumpsUsed < CONFIG.combat.maxJumps, shoot: false, aimAngle: self.facing > 0 ? 0 : Math.PI, targetId: null };
     }
 
     const dx = target.x - self.x;
+    const preferredDistance = self.id === 'bot2' ? CONFIG.bot.preferredDistance * 1.55 : self.id === 'bot3' ? CONFIG.bot.preferredDistance * 0.72 : CONFIG.bot.preferredDistance;
+    const closeDistance = self.id === 'bot3' ? CONFIG.bot.closeDistance * 0.72 : CONFIG.bot.closeDistance;
     const aim = getBotAction({
       selfX: self.x,
       selfY: self.y + self.height * 0.42,
@@ -142,11 +146,11 @@ export class BotController {
       selfGrounded: self.grounded,
       selfFacing: self.facing,
       selfCanJump: self.jumpsUsed < CONFIG.combat.maxJumps && self.botJumpCooldown <= 0,
-      distanceToEdge: distanceToPlatformEdge(self, dx < 0 ? -1 : 1),
+      distanceToEdge: distanceToPlatformEdge(self, dx < 0 ? -1 : 1, platforms),
       edgeLookAhead: CONFIG.bot.edgeLookAhead,
       shootRange: CONFIG.bot.shootingRange,
-      preferredDistance: CONFIG.bot.preferredDistance,
-      closeDistance: CONFIG.bot.closeDistance,
+      preferredDistance,
+      closeDistance,
       jumpTargetHeight: CONFIG.bot.jumpTargetHeight,
       aggression: profile.aimAccuracy,
     });

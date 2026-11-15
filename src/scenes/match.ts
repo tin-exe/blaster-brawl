@@ -22,7 +22,7 @@ export interface MatchSceneOptions {
 }
 
 function makePickup(): Pickup {
-  return { active: false, x: 0, y: 0, weapon: 'shotgun', phase: 0, respawnTimer: 0 };
+  return { active: false, x: 0, y: 0, weapon: 'shotgun', powerUp: null, phase: 0, respawnTimer: 0 };
 }
 
 function randomWeapon(random: () => number): (typeof WEAPON_ORDER)[number] {
@@ -40,6 +40,7 @@ export class MatchScene {
   readonly events = new SceneEventEmitter();
   readonly config: MatchConfig;
   readonly fighters: Fighter[];
+  readonly arena: (typeof CONFIG.world.arenas)[number];
   readonly projectiles = new ProjectileSystem();
   readonly effects: EffectSystem;
   readonly pickups = new ObjectPool(CONFIG.combat.pickupPoolSize, makePickup);
@@ -50,6 +51,7 @@ export class MatchScene {
   toast = '';
   toastTimer = 0;
   elapsed = 0;
+  wave = 1;
   winner: FighterId | null = null;
   finished = false;
   private readonly audio: AudioManager;
@@ -64,6 +66,7 @@ export class MatchScene {
     this.shakeIntensity = settings.shake;
     this.random = options.random ?? Math.random;
     this.botVsBot = options.botVsBot ?? false;
+    this.arena = CONFIG.world.arenas[Math.floor(this.random() * CONFIG.world.arenas.length)] ?? CONFIG.world.arenas[0];
     this.effects = new EffectSystem(this.random);
     this.fighters = this.createRoster(settings);
     this.resetPickups();
@@ -72,7 +75,7 @@ export class MatchScene {
 
   get human(): Fighter { return this.fighters.find((fighter) => fighter.playerSlot === 1) ?? this.fighters[0]!; }
   get bot(): Fighter { return this.fighters.find((fighter) => fighter.controller === 'bot') ?? this.fighters.find((fighter) => fighter.playerSlot === 2) ?? this.fighters[0]!; }
-  get platforms(): readonly Platform[] { return CONFIG.world.platforms; }
+  get platforms(): readonly Platform[] { return this.arena.platforms; }
   get winnerFighter(): Fighter | null { return this.winner ? this.fighters.find((fighter) => fighter.id === this.winner) ?? null : null; }
 
   shutdown(): void {
@@ -94,7 +97,8 @@ export class MatchScene {
       entries.push({ id: slot === 1 ? 'human' : 'player2', controller: 'human', playerSlot: slot as 1 | 2, displayName: `Player ${slot}` });
     }
     for (let bot = 1; bot <= this.config.botCount; bot += 1) {
-      entries.push({ id: bot === 1 ? 'bot' : bot === 2 ? 'bot2' : 'bot3', controller: 'bot', playerSlot: null, displayName: `Bot ${bot}` });
+      const role = bot === 1 ? 'RUSHER' : bot === 2 ? 'SNIPER' : 'BRUISER';
+      entries.push({ id: bot === 1 ? 'bot' : bot === 2 ? 'bot2' : 'bot3', controller: 'bot', playerSlot: null, displayName: this.config.mode === 'survival' ? role : `Bot ${bot}` });
     }
     for (let index = 0; index < entries.length; index += 1) {
       const entry = entries[index];
@@ -115,8 +119,11 @@ export class MatchScene {
         markerNumber: index + 1,
         markerShape: CONFIG.fighters.markerShapes[markerIndex],
         color,
-        stocks: this.config.stocks,
+        stocks: this.config.mode === 'survival' && entry.controller === 'bot' && this.botOrdinal(entry.id) > this.activeBotCountForWave(1)
+          ? 0
+          : this.config.mode === 'survival' && entry.controller === 'bot' ? 1 : this.config.stocks,
       });
+      fighter.dead = fighter.stocks <= 0;
       roster.push(fighter);
     }
     return roster;
@@ -140,6 +147,7 @@ export class MatchScene {
   }
 
   private resetPickups(): void {
+    this.pickups.deactivateAll();
     const count = this.config.weaponsEnabled
       ? Math.min(this.pickups.items.length, CONFIG.match.pickupBaseCount + Math.max(0, this.fighters.length - 2) * CONFIG.match.pickupPerExtraFighter)
       : 0;
@@ -155,6 +163,7 @@ export class MatchScene {
       pickup.x = point.x;
       pickup.y = point.y;
       pickup.weapon = randomWeapon(this.random);
+      pickup.powerUp = null;
       pickup.phase = this.random() * Math.PI * 2;
       pickup.respawnTimer = 0;
     }
@@ -192,7 +201,14 @@ export class MatchScene {
     this.updateCamera(dt);
 
     const contenders = this.fighters.filter((fighter) => fighter.stocks > 0);
-    if (contenders.length <= 1) {
+    if (this.config.mode === 'survival') {
+      if (this.human.stocks <= 0) {
+        const lastEnemy = this.fighters.find((fighter) => fighter.controller === 'bot' && fighter.stocks > 0);
+        this.finish(lastEnemy?.id ?? this.fighters.find((fighter) => fighter.controller === 'bot')?.id ?? this.human.id);
+      } else if (contenders.length === 1 && contenders[0]?.playerSlot === 1) {
+        this.advanceSurvivalWave();
+      }
+    } else if (contenders.length <= 1) {
       const winner = contenders[0] ?? this.fighters.find((fighter) => fighter.id === this.eliminationOrder.at(-2)) ?? this.human;
       this.finish(winner.id);
     }
@@ -206,7 +222,7 @@ export class MatchScene {
       projectiles: this.projectiles.pool.items,
       pickups: this.pickups.items,
       platforms: this.platforms,
-      matchConfig: this.config,
+      matchConfig: { ...this.config, difficulty: this.waveDifficulty() },
       dt,
       random: this.random,
       simulatedAllBots: this.botVsBot,
@@ -217,6 +233,40 @@ export class MatchScene {
   setParticleQuality(scale: number): void { this.effects.setQuality(scale); }
   setParticleLimit(limit: number): void { this.effects.setParticleLimit(limit); }
 
+  private botOrdinal(id: FighterId): number { return id === 'bot' ? 1 : id === 'bot2' ? 2 : id === 'bot3' ? 3 : 0; }
+
+  private activeBotCountForWave(wave: number): number {
+    return Math.min(this.config.botCount, Math.max(1, Math.ceil(wave / 2)));
+  }
+
+  private waveDifficulty(): MatchConfig['difficulty'] {
+    if (this.config.difficulty === 'easy') return this.wave >= 7 ? 'hard' : this.wave >= 4 ? 'normal' : 'easy';
+    if (this.config.difficulty === 'normal') return this.wave >= 5 ? 'hard' : 'normal';
+    return 'hard';
+  }
+
+  private advanceSurvivalWave(): void {
+    this.wave += 1;
+    this.eliminationOrder.length = 0;
+    this.projectiles.pool.deactivateAll();
+    this.botController.reset();
+    respawnFighter(this.human, CONFIG.world.spawn.human);
+    const activeBots = this.activeBotCountForWave(this.wave);
+    for (const fighter of this.fighters.filter((candidate) => candidate.controller === 'bot')) {
+      if (this.botOrdinal(fighter.id) > activeBots) {
+        fighter.stocks = 0;
+        fighter.dead = true;
+        fighter.respawnTimer = 0;
+        continue;
+      }
+      fighter.stocks = 1;
+      const spawn = this.chooseSpawn(CONFIG.world.spawnPoints, this.fighters, fighter) ?? CONFIG.world.spawn.human;
+      respawnFighter(fighter, spawn);
+    }
+    this.resetPickups();
+    this.showToast(`WAVE ${this.wave} — ${activeBots} ${activeBots === 1 ? 'ENEMY' : 'ENEMIES'} INCOMING!`);
+  }
+
   private updateFighter(fighter: Fighter, dt: number, input: PlayerInput, botAction: BotAction | null): void {
     fighter.animationTime += dt;
     fighter.fireCooldown = Math.max(0, fighter.fireCooldown - dt);
@@ -224,6 +274,8 @@ export class MatchScene {
     fighter.hitTimer = Math.max(0, fighter.hitTimer - dt);
     fighter.invulnerable = Math.max(0, fighter.invulnerable - dt);
     fighter.contactCooldown = Math.max(0, fighter.contactCooldown - dt);
+    fighter.shieldTime = Math.max(0, fighter.shieldTime - dt);
+    fighter.overdriveTime = Math.max(0, fighter.overdriveTime - dt);
     if (fighter.dead) {
       fighter.respawnTimer -= dt;
       if (fighter.respawnTimer <= 0 && fighter.stocks > 0) {
@@ -272,6 +324,7 @@ export class MatchScene {
       const firedWeapon = fighter.weapon;
       const fired = fireWeapon(fighter, aimAngle, this.projectiles, this.effects, this.random);
       if (fired.fired) {
+        if (fighter.overdriveTime > 0) fighter.fireCooldown *= CONFIG.powerups.overdriveFireScale;
         if (botAction) this.botController.recordShot(fighter, this.config.difficulty);
         this.audio.play('shot', firedWeapon);
         this.pauseShake(firedWeapon === 'rocket' ? CONFIG.feedback.rocketShake * 0.12 : 0.25);
@@ -285,7 +338,7 @@ export class MatchScene {
     fighter.vy = Math.min(CONFIG.fighters.maxFallSpeed, fighter.vy + CONFIG.world.gravity * dt);
     fighter.y += fighter.vy * dt;
     const nextBottom = fighter.y + fighter.height;
-    const landing = landingPlatform(previousBottom, nextBottom, fighter.x - fighter.width * 0.5, fighter.x + fighter.width * 0.5);
+    const landing = landingPlatform(previousBottom, nextBottom, fighter.x - fighter.width * 0.5, fighter.x + fighter.width * 0.5, this.platforms);
     if (landing) {
       if (!fighter.grounded && fighter.vy > 260) this.effects.dust(fighter.x, landing.y, '#f4d993');
       fighter.y = landing.y - fighter.height;
@@ -317,6 +370,17 @@ export class MatchScene {
     if (fighter.stocks <= 0 && !this.eliminationOrder.includes(fighter.id)) this.eliminationOrder.push(fighter.id);
     this.showToast(fighter.stocks > 0 ? `${fighter.displayName.toUpperCase()} RING OUT! ${fighter.stocks} STOCK${fighter.stocks === 1 ? '' : 'S'} LEFT.` : `${fighter.displayName.toUpperCase()} ELIMINATED!`);
     this.audio.play('hit');
+    if (fighter.controller === 'bot' && fighter.stocks <= 0 && this.config.weaponsEnabled && this.random() < CONFIG.powerups.dropChance) {
+      const drop = this.pickups.acquire();
+      if (drop) {
+        drop.x = clamp(fighter.x, 36, CONFIG.world.width - 36);
+        drop.y = clamp(fighter.y + fighter.height * 0.5, 110, CONFIG.world.groundY - 42);
+        drop.weapon = randomWeapon(this.random);
+        drop.powerUp = this.random() < 0.5 ? 'shield' : 'overdrive';
+        drop.phase = this.random() * Math.PI * 2;
+        drop.respawnTimer = 0;
+      }
+    }
   }
 
   private resolveFighterBumps(): void {
@@ -350,17 +414,22 @@ export class MatchScene {
     for (const projectile of this.projectiles.pool.items) {
       if (!projectile.active) continue;
       const targets = this.fighters
-        .filter((fighter) => fighter.id !== projectile.owner && fighter.stocks > 0 && !fighter.dead)
+        .filter((fighter) => fighter.id !== projectile.owner && fighter.stocks > 0 && !fighter.dead && !projectile.hitFighters?.includes(fighter.id))
         .sort((a, b) => distance(projectile.x, projectile.y, a.x, a.y) - distance(projectile.x, projectile.y, b.x, b.y));
       const target = targets.find((fighter) => overlapsCircle(projectile.x, projectile.y, projectile.radius + CONFIG.combat.fighterHitRadius, fighter)) ?? null;
       const weapon = CONFIG.weapons[projectile.weapon];
-      const platform = CONFIG.world.platforms.find((item) => projectile.x >= item.x && projectile.x <= item.x + item.width && projectile.y + projectile.radius >= item.y && projectile.y - projectile.radius <= item.y + item.height);
+      const platform = this.platforms.find((item) => projectile.x >= item.x && projectile.x <= item.x + item.width && projectile.y + projectile.radius >= item.y && projectile.y - projectile.radius <= item.y + item.height);
       if (projectile.weapon === 'rocket' && (target || platform)) {
         this.detonate(projectile.x, projectile.y, projectile.weapon, target, projectile.owner);
         projectile.active = false;
       } else if (target) {
         this.applyImpact(target, projectile.weapon, projectile.x, projectile.vx, 1);
-        projectile.active = false;
+        if (projectile.weapon === 'railgun') {
+          projectile.hitFighters?.push(target.id);
+          if ((projectile.hitFighters?.length ?? 0) >= 2) projectile.active = false;
+        } else {
+          projectile.active = false;
+        }
       } else if (platform) {
         projectile.active = false;
         this.effects.burst(projectile.x, projectile.y, weapon.color, CONFIG.particles.platformHitCount, CONFIG.particles.platformHitSpeed, CONFIG.particles.platformHitLifetime, CONFIG.particles.platformHitGravity, true);
@@ -389,8 +458,15 @@ export class MatchScene {
     }
   }
 
-  private applyImpact(target: Fighter, weaponId: 'pistol' | 'shotgun' | 'rocket', sourceX: number, horizontalVelocity: number, scale: number): void {
+  private applyImpact(target: Fighter, weaponId: keyof typeof CONFIG.weapons, sourceX: number, horizontalVelocity: number, scale: number): void {
     if (target.dead || target.invulnerable > 0) return;
+    if (target.shieldTime > 0) {
+      target.shieldTime = 0;
+      this.effects.burst(target.x, target.y + target.height * 0.45, CONFIG.powerups.shield.color, CONFIG.particles.impactCount * 2, CONFIG.particles.impactSpeed * 1.3, CONFIG.particles.impactLifetime, 0, true);
+      this.audio.play('pickup');
+      this.pauseShake(1.8);
+      return;
+    }
     const weapon = CONFIG.weapons[weaponId];
     let direction: -1 | 1 = target.x >= sourceX ? 1 : -1;
     if (Math.abs(target.x - sourceX) < 1) direction = horizontalVelocity < 0 ? 1 : -1;
@@ -417,6 +493,7 @@ export class MatchScene {
         const point = PICKUP_POINTS[Math.floor(this.random() * PICKUP_POINTS.length)];
         if (point) { pickup.x = point.x; pickup.y = point.y; }
         pickup.weapon = randomWeapon(this.random);
+        pickup.powerUp = null;
         pickup.respawnTimer = 0;
         pickup.active = true;
         activeCount += 1;
@@ -431,13 +508,21 @@ export class MatchScene {
       for (const fighter of this.fighters) {
         if (fighter.dead || fighter.stocks <= 0 || !overlapsCircle(pickup.x, pickup.y, 25, fighter)) continue;
         const weapon = CONFIG.weapons[pickup.weapon];
-        fighter.weapon = pickup.weapon;
-        fighter.ammo[pickup.weapon] = Math.min(weapon.ammo, fighter.ammo[pickup.weapon] + weapon.pickupAmmo);
+        if (pickup.powerUp) {
+          if (pickup.powerUp === 'shield') fighter.shieldTime = CONFIG.powerups.durationSeconds;
+          else fighter.overdriveTime = CONFIG.powerups.durationSeconds;
+          const powerUp = CONFIG.powerups[pickup.powerUp];
+          this.showToast(`${fighter.displayName.toUpperCase()} — ${powerUp.label}!`);
+          this.effects.burst(pickup.x, pickup.y, powerUp.color, CONFIG.particles.pickupCount * 2, CONFIG.particles.pickupSpeed * 1.3, CONFIG.particles.pickupLifetime, CONFIG.particles.pickupGravity, true);
+        } else {
+          fighter.weapon = pickup.weapon;
+          fighter.ammo[pickup.weapon] = Math.min(weapon.ammo, fighter.ammo[pickup.weapon] + weapon.pickupAmmo);
+          this.showToast(`${fighter.displayName.toUpperCase()} GRABBED ${weapon.label}!`);
+          this.effects.burst(pickup.x, pickup.y, weapon.color, CONFIG.particles.pickupCount, CONFIG.particles.pickupSpeed, CONFIG.particles.pickupLifetime, CONFIG.particles.pickupGravity, true);
+        }
         pickup.active = false;
         const fighterCountScale = 1 + Math.max(0, this.fighters.length - 2) * CONFIG.match.pickupRespawnRatePerFighter;
         pickup.respawnTimer = CONFIG.combat.pickupRespawnSeconds / fighterCountScale;
-        this.showToast(`${fighter.displayName.toUpperCase()} GRABBED ${weapon.label}!`);
-        this.effects.burst(pickup.x, pickup.y, weapon.color, CONFIG.particles.pickupCount, CONFIG.particles.pickupSpeed, CONFIG.particles.pickupLifetime, CONFIG.particles.pickupGravity, true);
         this.audio.play('pickup');
         break;
       }

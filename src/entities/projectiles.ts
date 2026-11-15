@@ -3,7 +3,7 @@ import { ObjectPool } from '../engine/pool';
 import type { FighterId, Projectile } from '../types';
 
 function createProjectile(): Projectile {
-  return { active: false, x: 0, y: 0, vx: 0, vy: 0, radius: 0, owner: 'human', weapon: 'pistol', life: 0, trailTimer: 0 };
+  return { active: false, x: 0, y: 0, vx: 0, vy: 0, radius: 0, owner: 'human', weapon: 'pistol', life: 0, trailTimer: 0, hitFighters: [] };
 }
 
 export class ProjectileSystem {
@@ -22,6 +22,7 @@ export class ProjectileSystem {
     projectile.weapon = weapon;
     projectile.life = definition.lifetime;
     projectile.trailTimer = 0;
+    projectile.hitFighters = [];
     return projectile;
   }
 
