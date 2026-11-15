@@ -19,6 +19,7 @@ export class InputController {
   private pointerY = 0;
   private pointerPressed = false;
   private pointerDown = false;
+  private pointerMoved = false;
   private padLeft = false;
   private padRight = false;
   private padJump = false;
@@ -67,12 +68,16 @@ export class InputController {
     this.pointerY = (event.clientY - bounds.top) / Math.max(1, bounds.height) * CONFIG.canvas.height;
   }
 
-  private readonly onPointerMove = (event: PointerEvent): void => { this.updatePointer(event); };
+  private readonly onPointerMove = (event: PointerEvent): void => {
+    this.updatePointer(event);
+    this.pointerMoved = true;
+  };
   private readonly onPointerDown = (event: PointerEvent): void => {
     if (event.button !== 0) return;
     this.updatePointer(event);
     this.pointerPressed = true;
     this.pointerDown = true;
+    this.pointerMoved = true;
     this.canvas.setPointerCapture?.(event.pointerId);
   };
   private readonly onPointerUp = (): void => { this.pointerDown = false; };
@@ -153,9 +158,11 @@ export class InputController {
       pointerY: this.pointerY,
       pointerPressed: this.pointerPressed,
       pointerDown: this.pointerDown,
+      pointerMoved: this.pointerMoved,
     };
     this.pressed.clear();
     this.pointerPressed = false;
+    this.pointerMoved = false;
     return frame;
   }
 

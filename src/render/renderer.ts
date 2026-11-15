@@ -24,6 +24,7 @@ export interface RenderState {
   lowQuality: boolean;
   touchMode: boolean;
   touchCapable: boolean;
+  pointerDown: boolean;
 }
 
 const INK = '#172137';
@@ -557,8 +558,8 @@ function drawMenu(ctx: CanvasRenderingContext2D, state: RenderState): void {
     if (!item) continue;
     const centerY = y + 28 + i * rowHeight + 3;
     if (i === state.menuIndex) {
-      roundedRectPath(ctx, x + 14, centerY - 17, width - 28, 34, 8);
-      ctx.fillStyle = 'rgba(255,107,92,0.28)';
+      roundedRectPath(ctx, x + 14, centerY - 17 + (state.pointerDown ? 2 : 0), width - 28, 34, 8);
+      ctx.fillStyle = state.pointerDown ? 'rgba(255,107,92,0.52)' : 'rgba(255,107,92,0.28)';
       ctx.fill();
       text(ctx, '▶', x + width - 23, centerY, 16, '#ff806c', 'center', 2, 1000);
     }
@@ -585,8 +586,8 @@ function drawCustomGame(ctx: CanvasRenderingContext2D, state: RenderState): void
   for (let index = 0; index < rows.length; index += 1) {
     const y = 178 + index * 37;
     if (index === state.customIndex) {
-      roundedRectPath(ctx, 234, y - 16, 492, 33, 8);
-      ctx.fillStyle = 'rgba(255,107,92,0.28)';
+      roundedRectPath(ctx, 234, y - 16 + (state.pointerDown ? 2 : 0), 492, 33, 8);
+      ctx.fillStyle = state.pointerDown ? 'rgba(255,107,92,0.52)' : 'rgba(255,107,92,0.28)';
       ctx.fill();
       text(ctx, '▶', 700, y, 15, '#ff806c', 'center', 2, 1000);
     }
@@ -613,8 +614,8 @@ function drawOptions(ctx: CanvasRenderingContext2D, state: RenderState): void {
   for (let i = 0; i < rows.length; i += 1) {
     const y = 158 + i * 29;
     if (state.optionsIndex === i) {
-      roundedRectPath(ctx, 150, y - 13, 660, 27, 7);
-      ctx.fillStyle = 'rgba(255,107,92,0.26)';
+      roundedRectPath(ctx, 150, y - 13 + (state.pointerDown ? 2 : 0), 660, 27, 7);
+      ctx.fillStyle = state.pointerDown ? 'rgba(255,107,92,0.5)' : 'rgba(255,107,92,0.26)';
       ctx.fill();
       text(ctx, '▶', 790, y, 13, '#ff806c', 'center', 2, 1000);
     }
@@ -631,8 +632,13 @@ function drawPause(ctx: CanvasRenderingContext2D, state: RenderState): void {
   const items = CONFIG.scene.pauseActions;
   for (let i = 0; i < items.length; i += 1) {
     const y = 260 + i * 42;
-    if (i === state.pauseIndex) text(ctx, '▶', 367, y, 15, '#ff806c', 'center', 2, 1000);
-    text(ctx, items[i] ?? '', 394, y, 20, '#fff', 'left', 4, 950);
+    if (i === state.pauseIndex) {
+      roundedRectPath(ctx, 326, y - 17 + (state.pointerDown ? 2 : 0), 308, 34, 8);
+      ctx.fillStyle = state.pointerDown ? 'rgba(255,107,92,0.52)' : 'rgba(255,107,92,0.28)';
+      ctx.fill();
+      text(ctx, '▶', 367, y + (state.pointerDown ? 2 : 0), 15, '#ff806c', 'center', 2, 1000);
+    }
+    text(ctx, items[i] ?? '', 394, y + (i === state.pauseIndex && state.pointerDown ? 2 : 0), 20, '#fff', 'left', 4, 950);
   }
   text(ctx, 'ESC RESUMES', CONFIG.canvas.width * 0.5, 379, 11, '#c7d3df', 'center', 3, 800);
 }
@@ -660,8 +666,13 @@ function drawGameOver(ctx: CanvasRenderingContext2D, state: RenderState): void {
   const items = CONFIG.scene.gameOverActions;
   for (let i = 0; i < items.length; i += 1) {
     const y = 333 + i * 42;
-    if (i === state.gameOverIndex) text(ctx, '▶', 361, y, 15, '#ff806c', 'center', 2, 1000);
-    text(ctx, items[i] ?? '', 388, y, 20, '#fff', 'left', 4, 950);
+    if (i === state.gameOverIndex) {
+      roundedRectPath(ctx, 319, y - 17 + (state.pointerDown ? 2 : 0), 322, 34, 8);
+      ctx.fillStyle = state.pointerDown ? 'rgba(255,107,92,0.52)' : 'rgba(255,107,92,0.28)';
+      ctx.fill();
+      text(ctx, '▶', 361, y + (state.pointerDown ? 2 : 0), 15, '#ff806c', 'center', 2, 1000);
+    }
+    text(ctx, items[i] ?? '', 388, y + (i === state.gameOverIndex && state.pointerDown ? 2 : 0), 20, '#fff', 'left', 4, 950);
   }
 }
 

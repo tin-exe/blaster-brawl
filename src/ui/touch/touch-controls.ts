@@ -13,6 +13,7 @@ export class TouchControls {
   private settings: GameSettings;
   private source: InputSource;
   private gameActive = false;
+  private readonly pressedTargets = new Map<number, HTMLElement>();
 
   constructor(root: HTMLElement, joystick: HTMLElement, settings: GameSettings) {
     this.root = root;
@@ -24,6 +25,7 @@ export class TouchControls {
     this.root.addEventListener('pointermove', this.onPointerMove, { passive: false });
     window.addEventListener('pointerup', this.onPointerEnd, { passive: false });
     window.addEventListener('pointercancel', this.onPointerEnd, { passive: false });
+    window.addEventListener('blur', this.onWindowBlur);
     this.applySettings();
   }
 
@@ -60,13 +62,18 @@ export class TouchControls {
     this.root.removeEventListener('pointermove', this.onPointerMove);
     window.removeEventListener('pointerup', this.onPointerEnd);
     window.removeEventListener('pointercancel', this.onPointerEnd);
+    window.removeEventListener('blur', this.onWindowBlur);
     this.input.clear();
+    this.clearPressedTargets();
   }
 
   private refreshVisibility(): void {
     const visible = this.gameActive && shouldShowTouchControls(this.isTouchDevice, this.settings.touchControlsEnabled, this.source);
     this.root.hidden = !visible;
-    if (!visible) this.input.clear();
+    if (!visible) {
+      this.input.clear();
+      this.clearPressedTargets();
+    }
   }
 
   private readonly onPointerDown = (event: PointerEvent): void => {
@@ -78,6 +85,8 @@ export class TouchControls {
     const action = target.dataset.touchAction as TouchAction | undefined;
     if (!action) return;
     this.input.pointerDown(event.pointerId, action);
+    this.pressedTargets.set(event.pointerId, target);
+    target.classList.add('is-pressed');
     try { target.setPointerCapture(event.pointerId); } catch { /* Pointer capture is optional in embedded browsers. */ }
     if (action === 'joystick') this.updateJoystick(event);
     if (this.settings.haptics && action !== 'joystick' && 'vibrate' in navigator) navigator.vibrate(10);
@@ -92,7 +101,20 @@ export class TouchControls {
   private readonly onPointerEnd = (event: PointerEvent): void => {
     if (this.input.getAction(event.pointerId)) event.preventDefault();
     this.input.pointerUp(event.pointerId);
+    const target = this.pressedTargets.get(event.pointerId);
+    this.pressedTargets.delete(event.pointerId);
+    if (target && ![...this.pressedTargets.values()].includes(target)) target.classList.remove('is-pressed');
   };
+
+  private readonly onWindowBlur = (): void => {
+    this.input.clear();
+    this.clearPressedTargets();
+  };
+
+  private clearPressedTargets(): void {
+    for (const target of this.pressedTargets.values()) target.classList.remove('is-pressed');
+    this.pressedTargets.clear();
+  }
 
   private updateJoystick(event: PointerEvent): void {
     const bounds = this.joystick.getBoundingClientRect();

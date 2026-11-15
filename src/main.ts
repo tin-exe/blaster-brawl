@@ -237,20 +237,24 @@ function setMute(): void {
   persist();
 }
 
-function setMenuSelectionFromPointer(x: number, y: number): void {
+function setMenuSelectionFromPointer(x: number, y: number): boolean {
   const panelWidth = CONFIG.menu.panelWidth;
   const panelX = CONFIG.canvas.width - CONFIG.menu.rightMargin - panelWidth;
   const top = 180 + 28;
-  if (x < panelX || x > panelX + panelWidth) return;
+  if (x < panelX || x > panelX + panelWidth) return false;
   const index = Math.floor((y - top + CONFIG.menu.rowHeight * 0.5) / CONFIG.menu.rowHeight);
-  if (index >= 0 && index < CONFIG.menu.items.length) menuIndex = index;
+  if (index < 0 || index >= CONFIG.menu.items.length) return false;
+  menuIndex = index;
+  return true;
 }
 
 function updateMenu(frame: InputFrame): void {
   if (frame.menuUp) menuIndex = (menuIndex + CONFIG.menu.items.length - 1) % CONFIG.menu.items.length;
   if (frame.menuDown) menuIndex = (menuIndex + 1) % CONFIG.menu.items.length;
-  if (frame.pointerDown || frame.pointerPressed) setMenuSelectionFromPointer(frame.pointerX, frame.pointerY);
-  if (!(frame.menuAccept || frame.pointerPressed)) return;
+  const overMenuItem = (frame.pointerMoved || frame.pointerDown || frame.pointerPressed)
+    ? setMenuSelectionFromPointer(frame.pointerX, frame.pointerY)
+    : false;
+  if (!(frame.menuAccept || (frame.pointerPressed && overMenuItem))) return;
   const selected = CONFIG.menu.items[menuIndex];
   if (!selected) return;
   audio.play('menu');
@@ -270,9 +274,10 @@ function updateCustomGame(frame: InputFrame): void {
   if (frame.menuBack) { screen = SCENE.MENU; return; }
 
   let pointerSelected = false;
-  if (frame.pointerPressed && frame.pointerX > 196 && frame.pointerX < 764 && frame.pointerY > 157 && frame.pointerY < 438) {
+  const overCustomPanel = frame.pointerX > 196 && frame.pointerX < 764 && frame.pointerY > 157 && frame.pointerY < 438;
+  if ((frame.pointerMoved || frame.pointerDown || frame.pointerPressed) && overCustomPanel) {
     customIndex = Math.max(0, Math.min(rowCount - 1, Math.floor((frame.pointerY - 171) / 37)));
-    pointerSelected = true;
+    pointerSelected = frame.pointerPressed;
   }
   if (customIndex === CONFIG.scene.customStartIndex && (frame.menuAccept || pointerSelected)) { audio.play('menu'); sceneEvents.emit(SCENE_EVENTS.START_GAME, customConfig); return; }
   if (customIndex === CONFIG.scene.customBackIndex && (frame.menuAccept || pointerSelected)) { screen = SCENE.MENU; return; }
@@ -300,12 +305,13 @@ function updateOptions(frame: InputFrame): void {
     screen = SCENE.MENU;
     return;
   }
-  if (frame.pointerPressed && frame.pointerX > 130 && frame.pointerX < 830 && frame.pointerY > 145 && frame.pointerY < 450) {
+  const overOptions = frame.pointerX > 130 && frame.pointerX < 830 && frame.pointerY > 145 && frame.pointerY < 450;
+  if ((frame.pointerMoved || frame.pointerDown || frame.pointerPressed) && overOptions) {
     optionsIndex = Math.max(0, Math.min(optionCount - 1, Math.floor((frame.pointerY - 158) / 29)));
+  }
+  if (frame.pointerPressed && overOptions) {
     applyOptionChange(1);
     return;
-  } else if (frame.pointerDown && frame.pointerX > 130 && frame.pointerX < 830 && frame.pointerY > 145 && frame.pointerY < 450) {
-    optionsIndex = Math.max(0, Math.min(optionCount - 1, Math.floor((frame.pointerY - 158) / 29)));
   }
   if (frame.menuAccept) applyOptionChange(1);
   if (frame.leftPressed) applyOptionChange(-1);
@@ -369,10 +375,11 @@ function updatePause(frame: InputFrame): void {
   const actionCount = CONFIG.scene.pauseActions.length;
   if (frame.menuUp) pauseIndex = (pauseIndex + actionCount - 1) % actionCount;
   if (frame.menuDown) pauseIndex = (pauseIndex + 1) % actionCount;
-  if (frame.pointerDown && frame.pointerX > 300 && frame.pointerX < 660 && frame.pointerY > 230 && frame.pointerY < 360) {
+  const overPauseAction = frame.pointerX >= 326 && frame.pointerX <= 634 && frame.pointerY >= 243 && frame.pointerY <= 361;
+  if ((frame.pointerMoved || frame.pointerDown || frame.pointerPressed) && overPauseAction) {
     pauseIndex = Math.max(CONFIG.scene.pauseActionIndex.resume, Math.min(CONFIG.scene.pauseActionIndex.mainMenu, Math.floor((frame.pointerY - 239) / 42)));
   }
-  if (!(frame.menuAccept || frame.pointerPressed)) return;
+  if (!(frame.menuAccept || (frame.pointerPressed && overPauseAction))) return;
   if (pauseIndex === CONFIG.scene.pauseActionIndex.resume) paused = false;
   else if (pauseIndex === CONFIG.scene.pauseActionIndex.restart) sceneEvents.emit(SCENE_EVENTS.RESTART_GAME, undefined);
   else sceneEvents.emit(SCENE_EVENTS.RETURN_TO_MENU, undefined);
@@ -381,10 +388,11 @@ function updatePause(frame: InputFrame): void {
 function updateGameOver(frame: InputFrame): void {
   const actionCount = CONFIG.scene.gameOverActions.length;
   if (frame.menuUp || frame.menuDown) gameOverIndex = (gameOverIndex + 1) % actionCount;
-  if (frame.pointerDown && frame.pointerY > 295 && frame.pointerY < 385) {
-    gameOverIndex = frame.pointerY < 344 ? CONFIG.scene.gameOverActionIndex.replay : CONFIG.scene.gameOverActionIndex.menu;
+  const overGameOverAction = frame.pointerX >= 319 && frame.pointerX <= 641 && frame.pointerY >= 316 && frame.pointerY <= 392;
+  if ((frame.pointerMoved || frame.pointerDown || frame.pointerPressed) && overGameOverAction) {
+    gameOverIndex = frame.pointerY < 354 ? CONFIG.scene.gameOverActionIndex.replay : CONFIG.scene.gameOverActionIndex.menu;
   }
-  if (!(frame.menuAccept || frame.pointerPressed)) return;
+  if (!(frame.menuAccept || (frame.pointerPressed && overGameOverAction))) return;
   if (gameOverIndex === CONFIG.scene.gameOverActionIndex.replay) sceneEvents.emit(SCENE_EVENTS.RESTART_GAME, undefined);
   else sceneEvents.emit(SCENE_EVENTS.RETURN_TO_MENU, undefined);
 }
@@ -524,6 +532,7 @@ function loop(now: number): void {
     lowQuality: lowQualityActive,
     touchMode: touchControls.activeForPlayer,
     touchCapable: touchControls.isTouchDevice || settings.touchControlsEnabled,
+    pointerDown: frame.pointerDown,
   };
   touchControls.setGameActive(screen === SCENE.GAME);
   renderGame(context, state);
