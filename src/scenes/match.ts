@@ -1,7 +1,10 @@
 import { CONFIG, SCENE_EVENTS, WEAPON_ORDER } from '../config';
 import { AudioManager } from '../audio/audio';
-import { clamp, distance, overlaps } from '../engine/math';
+import { clamp, distance, overlaps, squaredDistance } from '../engine/math';
 import { ObjectPool } from '../engine/pool';
+import { DEFAULT_MATCH_SEED, SeededRandom } from '../engine/random';
+import { TickInputLog } from '../engine/input-log';
+import { hashState, quantizeStateNumber } from '../engine/state-hash';
 import { BotController } from '../ai/controller';
 import { EffectSystem } from '../entities/effects';
 import { createFighter, respawnFighter, type SpawnPoint } from '../entities/fighter';
@@ -12,13 +15,18 @@ import { cycleWeapon, fireWeapon } from '../weapons/fire';
 import type { BotAction, Fighter, FighterId, InputFrame, MatchConfig, Pickup, Platform, PlayerInput } from '../types';
 import type { GameSettings } from '../storage/settings';
 import { createMatchConfig, DEFAULT_MATCH_CONFIG } from '../game/match-config';
+import { GAME_CONTENT, isHazardActiveAtTick, RULESET_HASH, SAFE_DEFAULT_ARENA, VALID_ARENAS } from '../game/content';
+import { t } from '../i18n';
 import { SceneEventEmitter } from './events';
+import type { ArenaDefinition } from '../types';
 
 const PICKUP_POINTS = CONFIG.world.pickupSpawns;
 
 export interface MatchSceneOptions {
   botVsBot?: boolean;
   random?: () => number;
+  seed?: number;
+  challengeDate?: string;
 }
 
 function makePickup(): Pickup {
@@ -33,19 +41,26 @@ function overlapsCircle(x: number, y: number, radius: number, fighter: Fighter):
   const padding = CONFIG.fighters.collisionPadding;
   const closestX = clamp(x, fighter.x - fighter.width * 0.5 + padding, fighter.x + fighter.width * 0.5 - padding);
   const closestY = clamp(y, fighter.y + padding, fighter.y + fighter.height - padding);
-  return distance(x, y, closestX, closestY) <= radius;
+  return squaredDistance(x, y, closestX, closestY) <= radius * radius;
 }
 
 export class MatchScene {
   readonly events = new SceneEventEmitter();
   readonly config: MatchConfig;
   readonly fighters: Fighter[];
-  readonly arena: (typeof CONFIG.world.arenas)[number];
+  readonly arena: ArenaDefinition;
+  readonly challengeDate: string | null;
+  readonly rulesetHash = RULESET_HASH;
   readonly projectiles = new ProjectileSystem();
   readonly effects: EffectSystem;
   readonly pickups = new ObjectPool(CONFIG.combat.pickupPoolSize, makePickup);
   readonly eliminationOrder: FighterId[] = [];
+  readonly inputLog = new TickInputLog();
+  readonly seed: number;
+  simulationTick = 0;
+  renderAlpha = 1;
   cameraX = 0;
+  previousCameraX = 0;
   cameraZoom = 0;
   shake = 0;
   shakeIntensity: number;
@@ -60,6 +75,9 @@ export class MatchScene {
   finished = false;
   private readonly audio: AudioManager;
   private readonly botController = new BotController();
+  private readonly simulationRandom: SeededRandom;
+  private readonly presentationRandom: SeededRandom;
+  private readonly hasInjectedRandom: boolean;
   private readonly random: () => number;
   private readonly botVsBot: boolean;
   private isShutdown = false;
@@ -68,19 +86,49 @@ export class MatchScene {
     this.audio = audio;
     this.config = createMatchConfig(matchConfig.mode, matchConfig);
     this.shakeIntensity = settings.shake;
-    this.random = options.random ?? Math.random;
+    this.seed = (options.seed ?? DEFAULT_MATCH_SEED) >>> 0;
+    this.simulationRandom = new SeededRandom(this.seed);
+    this.presentationRandom = new SeededRandom(this.seed ^ 0x9e3779b9);
+    this.hasInjectedRandom = options.random !== undefined;
+    this.random = options.random ?? (() => this.simulationRandom.next());
     this.botVsBot = options.botVsBot ?? false;
-    this.arena = CONFIG.world.arenas[Math.floor(this.random() * CONFIG.world.arenas.length)] ?? CONFIG.world.arenas[0];
-    this.effects = new EffectSystem(this.random);
+    this.challengeDate = this.config.mode === 'daily' ? options.challengeDate ?? null : null;
+    this.arena = VALID_ARENAS[Math.floor(this.random() * VALID_ARENAS.length)] ?? SAFE_DEFAULT_ARENA;
+    this.effects = new EffectSystem(() => this.presentationRandom.next());
     this.fighters = this.createRoster(settings);
     this.resetPickups();
     this.cameraX = this.cameraTarget();
+    this.previousCameraX = this.cameraX;
   }
 
   get human(): Fighter { return this.fighters.find((fighter) => fighter.playerSlot === 1) ?? this.fighters[0]!; }
   get bot(): Fighter { return this.fighters.find((fighter) => fighter.controller === 'bot') ?? this.fighters.find((fighter) => fighter.playerSlot === 2) ?? this.fighters[0]!; }
   get platforms(): readonly Platform[] { return this.arena.platforms; }
   get winnerFighter(): Fighter | null { return this.winner ? this.fighters.find((fighter) => fighter.id === this.winner) ?? null : null; }
+
+  stateHash(): string {
+    const q = (value: number) => quantizeStateNumber(value);
+    const fighters = this.fighters.map((fighter) => [
+      fighter.id, fighter.controller, fighter.playerSlot, q(fighter.x), q(fighter.y), q(fighter.vx), q(fighter.vy),
+      fighter.facing, fighter.grounded, fighter.jumpsUsed, q(fighter.damagePercent), fighter.stocks, fighter.dead,
+      fighter.weapon, WEAPON_ORDER.map((weapon) => fighter.ammo[weapon]), q(fighter.fireCooldown),
+      q(fighter.invulnerable), q(fighter.respawnTimer), q(fighter.contactCooldown), q(fighter.shieldTime),
+      q(fighter.overdriveTime), q(fighter.springTime), fighter.hazardCooldownTicks, q(fighter.botJumpCooldown),
+    ]).sort((a, b) => String(a[0]) < String(b[0]) ? -1 : String(a[0]) > String(b[0]) ? 1 : 0);
+    const projectiles = this.projectiles.pool.items.map((projectile, index) => projectile.active ? [
+      index, projectile.owner, projectile.weapon, q(projectile.x), q(projectile.y), q(projectile.vx), q(projectile.vy),
+      q(projectile.life), q(projectile.trailTimer), projectile.hitFighters ?? [],
+    ] : null);
+    const pickups = this.pickups.items.map((pickup, index) => [
+      index, pickup.active, q(pickup.x), q(pickup.y), pickup.weapon, pickup.powerUp, q(pickup.respawnTimer),
+    ]);
+    return hashState([
+      this.simulationTick, this.seed, this.hasInjectedRandom ? null : this.simulationRandom.state,
+      this.config.mode, this.config.humanPlayers, this.config.botCount, this.config.difficulty, this.config.stocks,
+      this.config.weaponsEnabled, this.arena.id, this.challengeDate, this.rulesetHash, this.wave, this.winner, this.finished,
+      this.eliminationOrder, fighters, projectiles, pickups, this.botController.snapshot(),
+    ]);
+  }
 
   shutdown(): void {
     if (this.isShutdown) return;
@@ -127,6 +175,8 @@ export class MatchScene {
           ? 0
           : this.config.mode === 'survival' && entry.controller === 'bot' ? 1 : this.config.stocks,
       });
+      fighter.previousX = fighter.x;
+      fighter.previousY = fighter.y;
       fighter.dead = fighter.stocks <= 0;
       roster.push(fighter);
     }
@@ -166,9 +216,12 @@ export class MatchScene {
       if (!pickup || !point) break;
       pickup.x = point.x;
       pickup.y = point.y;
+      pickup.previousX = point.x;
+      pickup.previousY = point.y;
       pickup.weapon = randomWeapon(this.random);
       pickup.powerUp = null;
-      pickup.phase = this.random() * Math.PI * 2;
+      pickup.phase = this.presentationRandom.next() * Math.PI * 2;
+      pickup.previousPhase = pickup.phase;
       pickup.respawnTimer = 0;
     }
   }
@@ -184,32 +237,36 @@ export class MatchScene {
 
   update(dt: number, input: InputFrame): FighterId | null {
     if (this.finished || this.isShutdown) return this.winner;
+    this.simulationTick += 1;
+    this.inputLog.record(this.simulationTick, input);
+    this.previousCameraX = this.cameraX;
+    for (const fighter of this.fighters) { fighter.previousX = fighter.x; fighter.previousY = fighter.y; }
+    for (const pickup of this.pickups.items) { pickup.previousX = pickup.x; pickup.previousY = pickup.y; pickup.previousPhase = pickup.phase; }
+    const presentationFrozen = this.hitstopRemaining > 0;
+    if (presentationFrozen) this.hitstopRemaining = Math.max(0, this.hitstopRemaining - dt);
+    const presentationDt = presentationFrozen ? 0 : dt;
     this.elapsed += dt;
-    this.toastTimer = Math.max(0, this.toastTimer - dt);
-    this.shake = Math.max(0, this.shake - CONFIG.feedback.shakeDecay * dt);
-    this.cameraZoom = Math.max(0, this.cameraZoom - CONFIG.feedback.cameraZoomDecay * dt);
-    this.screenFlash = Math.max(0, this.screenFlash - CONFIG.feedback.flashFadePerSecond * dt);
-    if (this.hitstopRemaining > 0) {
-      this.hitstopRemaining = Math.max(0, this.hitstopRemaining - dt);
-      this.effects.update(dt * 0.35);
-      return this.winner;
-    }
-    this.effects.update(dt);
-    this.updatePickups(dt);
+    this.toastTimer = Math.max(0, this.toastTimer - presentationDt);
+    this.shake = Math.max(0, this.shake - CONFIG.feedback.shakeDecay * presentationDt);
+    this.cameraZoom = Math.max(0, this.cameraZoom - CONFIG.feedback.cameraZoomDecay * presentationDt);
+    this.screenFlash = Math.max(0, this.screenFlash - CONFIG.feedback.flashFadePerSecond * presentationDt);
+    this.effects.update(presentationDt);
+    this.updatePickups(dt, presentationDt);
 
     for (const fighter of this.fighters) {
       if (fighter.stocks <= 0) continue;
       const isAI = this.botVsBot || fighter.controller === 'bot';
       const action = isAI ? this.botAction(fighter, dt) : null;
       const playerInput: PlayerInput = fighter.playerSlot === 2 ? input.player2 : input;
-      this.updateFighter(fighter, dt, playerInput, action);
+      this.updateFighter(fighter, dt, playerInput, action, presentationDt);
     }
 
+    this.applyArenaHazards();
     this.resolveFighterBumps();
     this.projectiles.update(dt);
     this.resolveProjectileHits();
     this.collectPickups();
-    this.updateCamera(dt);
+    this.updateCamera(presentationDt);
 
     const contenders = this.fighters.filter((fighter) => fighter.stocks > 0);
     if (this.config.mode === 'survival') {
@@ -224,6 +281,39 @@ export class MatchScene {
       this.finish(winner.id);
     }
     return this.winner;
+  }
+
+  private applyArenaHazards(): void {
+    for (const hazard of this.arena.hazards) {
+      if (!isHazardActiveAtTick(hazard, this.simulationTick)) continue;
+      for (const fighter of this.fighters) {
+        if (fighter.dead || fighter.stocks <= 0 || fighter.invulnerable > 0 || fighter.hazardCooldownTicks > 0) continue;
+        const fighterBounds = { x: fighter.x - fighter.width * 0.5, y: fighter.y, width: fighter.width, height: fighter.height };
+        if (!overlaps(fighterBounds, hazard)) continue;
+        fighter.hazardCooldownTicks = hazard.cooldownTicks;
+        if (fighter.shieldTime > 0) {
+          fighter.shieldTime = 0;
+          this.screenFlashColor = CONFIG.powerups.shield.color;
+          this.screenFlash = Math.max(this.screenFlash, CONFIG.feedback.shieldFlashAlpha);
+          this.effects.ring(fighter.x, fighter.y + fighter.height * 0.45, CONFIG.powerups.shield.color, 12, 68, 0.26);
+          this.audio.play('shieldBreak');
+          continue;
+        }
+        fighter.damagePercent = Math.min(CONFIG.combat.maximumDamage, fighter.damagePercent + hazard.damage);
+        const direction = fighter.x >= hazard.x + hazard.width * 0.5 ? 1 : -1;
+        fighter.vx = direction * Math.abs(hazard.knockbackX);
+        fighter.vy = hazard.knockbackY;
+        fighter.grounded = false;
+        fighter.hitTimer = CONFIG.combat.hitStunSeconds;
+        this.showToast(t('hazard.active'));
+        this.effects.burst(fighter.x, fighter.y + fighter.height * 0.45, '#fff6d5', CONFIG.particles.impactCount, CONFIG.particles.impactSpeed, CONFIG.particles.impactLifetime, 0, true);
+        this.effects.ring(fighter.x, fighter.y + fighter.height * 0.45, '#ffe16b', 10, 58, 0.24);
+        const heavyImpact = Math.abs(hazard.knockbackX) >= CONFIG.combat.heavyImpactThreshold;
+        if (heavyImpact) this.hitstopRemaining = Math.max(this.hitstopRemaining, CONFIG.feedback.hitStopSeconds);
+        this.audio.playImpact(heavyImpact);
+        this.pauseShake(CONFIG.feedback.hitShake);
+      }
+    }
   }
 
   private botAction(fighter: Fighter, dt: number): BotAction {
@@ -279,16 +369,18 @@ export class MatchScene {
     this.showToast(`WAVE ${this.wave} — ${activeBots} ${activeBots === 1 ? 'ENEMY' : 'ENEMIES'} INCOMING!`);
   }
 
-  private updateFighter(fighter: Fighter, dt: number, input: PlayerInput, botAction: BotAction | null): void {
-    fighter.animationTime += dt;
-    fighter.landingTimer = Math.max(0, fighter.landingTimer - dt);
+  private updateFighter(fighter: Fighter, dt: number, input: PlayerInput, botAction: BotAction | null, presentationDt: number): void {
+    fighter.animationTime += presentationDt;
+    fighter.landingTimer = Math.max(0, fighter.landingTimer - presentationDt);
     fighter.fireCooldown = Math.max(0, fighter.fireCooldown - dt);
-    fighter.shootTimer = Math.max(0, fighter.shootTimer - dt);
-    fighter.hitTimer = Math.max(0, fighter.hitTimer - dt);
+    fighter.shootTimer = Math.max(0, fighter.shootTimer - presentationDt);
+    fighter.hitTimer = Math.max(0, fighter.hitTimer - presentationDt);
     fighter.invulnerable = Math.max(0, fighter.invulnerable - dt);
     fighter.contactCooldown = Math.max(0, fighter.contactCooldown - dt);
     fighter.shieldTime = Math.max(0, fighter.shieldTime - dt);
     fighter.overdriveTime = Math.max(0, fighter.overdriveTime - dt);
+    fighter.springTime = Math.max(0, fighter.springTime - dt);
+    fighter.hazardCooldownTicks = Math.max(0, fighter.hazardCooldownTicks - 1);
     if (fighter.dead) {
       fighter.respawnTimer -= dt;
       if (fighter.respawnTimer <= 0 && fighter.stocks > 0) {
@@ -326,7 +418,8 @@ export class MatchScene {
     else fighter.vx = approachNumber(fighter.vx, 0, friction);
 
     if (wantsJump && fighter.jumpsUsed < CONFIG.combat.maxJumps && (fighter.grounded || fighter.playerSlot === null || this.botVsBot)) {
-      fighter.vy = -(fighter.jumpsUsed === 0 ? CONFIG.fighters.jumpVelocity : CONFIG.fighters.doubleJumpVelocity);
+      const springScale = fighter.springTime > 0 ? CONFIG.powerups.spring.jumpVelocityScale : 1;
+      fighter.vy = -(fighter.jumpsUsed === 0 ? CONFIG.fighters.jumpVelocity : CONFIG.fighters.doubleJumpVelocity) * springScale;
       fighter.jumpsUsed += 1;
       fighter.grounded = false;
       this.effects.dust(fighter.x, fighter.y + fighter.height, fighter.color);
@@ -373,7 +466,7 @@ export class MatchScene {
   private faceNearestOpponent(fighter: Fighter): void {
     const nearest = this.fighters
       .filter((other) => other.id !== fighter.id && !other.dead && other.stocks > 0)
-      .sort((a, b) => distance(fighter.x, fighter.y, a.x, a.y) - distance(fighter.x, fighter.y, b.x, b.y))[0];
+      .sort((a, b) => squaredDistance(fighter.x, fighter.y, a.x, a.y) - squaredDistance(fighter.x, fighter.y, b.x, b.y))[0];
     if (nearest) fighter.facing = nearest.x >= fighter.x ? 1 : -1;
   }
 
@@ -395,9 +488,13 @@ export class MatchScene {
       if (drop) {
         drop.x = clamp(fighter.x, 36, CONFIG.world.width - 36);
         drop.y = clamp(fighter.y + fighter.height * 0.5, 110, CONFIG.world.groundY - 42);
+        drop.previousX = drop.x;
+        drop.previousY = drop.y;
         drop.weapon = randomWeapon(this.random);
-        drop.powerUp = this.random() < 0.5 ? 'shield' : 'overdrive';
-        drop.phase = this.random() * Math.PI * 2;
+        const powerUps = GAME_CONTENT.powerUps;
+        drop.powerUp = powerUps[Math.floor(this.random() * powerUps.length)]?.id ?? 'shield';
+        drop.phase = this.presentationRandom.next() * Math.PI * 2;
+        drop.previousPhase = drop.phase;
         drop.respawnTimer = 0;
       }
     }
@@ -435,7 +532,7 @@ export class MatchScene {
       if (!projectile.active) continue;
       const targets = this.fighters
         .filter((fighter) => fighter.id !== projectile.owner && fighter.stocks > 0 && !fighter.dead && !projectile.hitFighters?.includes(fighter.id))
-        .sort((a, b) => distance(projectile.x, projectile.y, a.x, a.y) - distance(projectile.x, projectile.y, b.x, b.y));
+        .sort((a, b) => squaredDistance(projectile.x, projectile.y, a.x, a.y) - squaredDistance(projectile.x, projectile.y, b.x, b.y));
       const target = targets.find((fighter) => overlapsCircle(projectile.x, projectile.y, projectile.radius + CONFIG.combat.fighterHitRadius, fighter)) ?? null;
       const weapon = CONFIG.weapons[projectile.weapon];
       const platform = this.platforms.find((item) => projectile.x >= item.x && projectile.x <= item.x + item.width && projectile.y + projectile.radius >= item.y && projectile.y - projectile.radius <= item.y + item.height);
@@ -515,20 +612,21 @@ export class MatchScene {
     this.pauseShake(weaponId === 'rocket' ? CONFIG.feedback.rocketShake : CONFIG.feedback.hitShake);
   }
 
-  private updatePickups(dt: number): void {
+  private updatePickups(dt: number, presentationDt: number): void {
     if (!this.config.weaponsEnabled) return;
     const count = Math.min(this.pickups.items.length, CONFIG.match.pickupBaseCount + Math.max(0, this.fighters.length - 2) * CONFIG.match.pickupPerExtraFighter);
     let activeCount = this.pickups.items.reduce((total, pickup) => total + Number(pickup.active), 0);
     for (const pickup of this.pickups.items) {
-      pickup.phase += CONFIG.combat.pickupFloatSpeed * dt;
+      pickup.phase += CONFIG.combat.pickupFloatSpeed * presentationDt;
       if (pickup.active) continue;
       if (activeCount >= count || pickup.respawnTimer <= 0) continue;
       pickup.respawnTimer -= dt;
       if (pickup.respawnTimer <= 0) {
         const point = PICKUP_POINTS[Math.floor(this.random() * PICKUP_POINTS.length)];
-        if (point) { pickup.x = point.x; pickup.y = point.y; }
+        if (point) { pickup.x = point.x; pickup.y = point.y; pickup.previousX = point.x; pickup.previousY = point.y; }
         pickup.weapon = randomWeapon(this.random);
         pickup.powerUp = null;
+        pickup.previousPhase = pickup.phase;
         pickup.respawnTimer = 0;
         pickup.active = true;
         activeCount += 1;
@@ -545,7 +643,8 @@ export class MatchScene {
         const weapon = CONFIG.weapons[pickup.weapon];
         if (pickup.powerUp) {
           if (pickup.powerUp === 'shield') fighter.shieldTime = CONFIG.powerups.durationSeconds;
-          else fighter.overdriveTime = CONFIG.powerups.durationSeconds;
+          else if (pickup.powerUp === 'overdrive') fighter.overdriveTime = CONFIG.powerups.durationSeconds;
+          else fighter.springTime = CONFIG.powerups.durationSeconds;
           const powerUp = CONFIG.powerups[pickup.powerUp];
           this.showToast(`${fighter.displayName.toUpperCase()} — ${powerUp.label}!`);
           this.effects.burst(pickup.x, pickup.y, powerUp.color, CONFIG.particles.pickupCount * 2, CONFIG.particles.pickupSpeed * 1.3, CONFIG.particles.pickupLifetime, CONFIG.particles.pickupGravity, true);
@@ -573,8 +672,9 @@ export class MatchScene {
   }
 
   private updateCamera(dt: number): void {
+    if (dt <= 0) return;
     const target = this.cameraTarget();
-    this.cameraX += (target - this.cameraX) * (1 - Math.pow(1 - CONFIG.world.camera.follow, dt * CONFIG.canvas.targetFps));
+    this.cameraX += (target - this.cameraX) * Math.min(1, dt * CONFIG.canvas.targetFps * CONFIG.world.camera.follow);
   }
 
   private finish(winner: FighterId): void {

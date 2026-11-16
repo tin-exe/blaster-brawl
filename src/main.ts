@@ -1,7 +1,11 @@
 import { AudioManager } from './audio/audio';
 import { CONFIG, SCENE, SCENE_EVENTS } from './config';
 import { InputController } from './engine/input';
-import { adjustMatchConfig, DEFAULT_MATCH_CONFIG } from './game/match-config';
+import { TickInputSampler } from './engine/tick-input';
+import { DEFAULT_MATCH_SEED } from './engine/random';
+import { adjustMatchConfig, createMatchConfig, DEFAULT_MATCH_CONFIG } from './game/match-config';
+import { createDailyChallenge } from './game/daily-challenge';
+import { BestOfThreeSeries } from './game/best-of-three';
 import { SceneEventEmitter } from './scenes/events';
 import { MatchScene } from './scenes/match';
 import { renderGame, type RenderState, type ScreenMode } from './render/renderer';
@@ -46,6 +50,7 @@ let menuIndex = 0;
 let customIndex = 0;
 let customConfig: MatchConfig = DEFAULT_MATCH_CONFIG;
 let lastMatchConfig: MatchConfig = DEFAULT_MATCH_CONFIG;
+let bestOfThreeSeries: BestOfThreeSeries | null = null;
 let optionsIndex = 0;
 let gameOverIndex = 0;
 let pauseIndex = 0;
@@ -54,10 +59,7 @@ let menuToast = '';
 let menuToastTimer = 0;
 let lastFrame = performance.now();
 let accumulator = 0;
-let queuedJump = false;
-let queuedSwitch = false;
-let queuedPlayer2Jump = false;
-let queuedPlayer2Switch = false;
+const tickInputSampler = new TickInputSampler();
 let slowFrameSamples = 0;
 let healthyFrameSamples = 0;
 let reducedParticleQuality = false;
@@ -101,7 +103,7 @@ function updateOrientationState(): void {
     paused = true;
     pausedForOrientation = true;
     accumulator = 0;
-    clearQueuedGameInput();
+    tickInputSampler.clear();
   } else if (!portrait && pausedForOrientation) {
     paused = false;
     pausedForOrientation = false;
@@ -136,7 +138,7 @@ window.addEventListener('gamepadconnected', () => touchControls.setInputSource('
 function pauseForInterruption(): void {
   if (screen === SCENE.GAME && !paused) paused = true;
   accumulator = 0;
-  clearQueuedGameInput();
+  tickInputSampler.clear();
   void audio.suspend();
 }
 
@@ -177,10 +179,27 @@ function setMenuToast(message: string): void {
   menuToastTimer = CONFIG.hud.toastSeconds;
 }
 
-function startGame(config: MatchConfig = lastMatchConfig): void {
-  lastMatchConfig = config;
+function createMatchSeed(): number {
+  if (typeof globalThis.crypto === 'undefined') return DEFAULT_MATCH_SEED;
+  const value = new Uint32Array(1);
+  globalThis.crypto.getRandomValues(value);
+  return value[0] ?? DEFAULT_MATCH_SEED;
+}
+
+function startGame(config: MatchConfig = lastMatchConfig, continueSeries = false): void {
+  const challenge = config.mode === 'daily' ? createDailyChallenge(new Date()) : null;
+  const matchConfig = challenge?.config ?? config;
+  lastMatchConfig = matchConfig;
+  if (matchConfig.mode === 'bestOf3') {
+    if (!continueSeries || !bestOfThreeSeries || bestOfThreeSeries.snapshot().complete) bestOfThreeSeries = new BestOfThreeSeries();
+  } else {
+    bestOfThreeSeries = null;
+  }
   match?.shutdown();
-  const activeMatch = new MatchScene(settings, audio, config);
+  const activeMatch = new MatchScene(settings, audio, matchConfig, {
+    seed: challenge?.seed ?? createMatchSeed(),
+    challengeDate: challenge?.challengeDate,
+  });
   match = activeMatch;
   activeMatch.events.once(SCENE_EVENTS.GAME_OVER, (winner) => {
     sceneEvents.emit(SCENE_EVENTS.GAME_OVER, winner);
@@ -190,10 +209,7 @@ function startGame(config: MatchConfig = lastMatchConfig): void {
   gameOverIndex = 0;
   pauseIndex = 0;
   accumulator = 0;
-  queuedJump = false;
-  queuedSwitch = false;
-  queuedPlayer2Jump = false;
-  queuedPlayer2Switch = false;
+  tickInputSampler.clear();
   slowFrameSamples = 0;
   healthyFrameSamples = 0;
   reducedParticleQuality = false;
@@ -215,18 +231,27 @@ function startGame(config: MatchConfig = lastMatchConfig): void {
 
 function returnToMenu(): void {
   match?.shutdown();
+  bestOfThreeSeries = null;
   screen = SCENE.MENU;
   match = null;
   paused = false;
   accumulator = 0;
-  clearQueuedGameInput();
+  tickInputSampler.clear();
 }
 
 sceneEvents.on(SCENE_EVENTS.START_GAME, (config) => startGame(config));
-sceneEvents.on(SCENE_EVENTS.RESTART_GAME, () => startGame(lastMatchConfig));
+sceneEvents.on(SCENE_EVENTS.RESTART_GAME, () => {
+  const continueSeries = lastMatchConfig.mode === 'bestOf3'
+    && (screen === SCENE.GAME || (screen === SCENE.GAME_OVER && bestOfThreeSeries !== null && !bestOfThreeSeries.snapshot().complete));
+  startGame(lastMatchConfig, continueSeries);
+});
 sceneEvents.on(SCENE_EVENTS.RETURN_TO_MENU, () => returnToMenu());
-sceneEvents.on(SCENE_EVENTS.GAME_OVER, () => {
+sceneEvents.on(SCENE_EVENTS.GAME_OVER, (winnerId) => {
   if (screen !== SCENE.GAME) return;
+  if (match?.config.mode === 'bestOf3' && bestOfThreeSeries) {
+    const winningFighter = match.fighters.find((fighter) => fighter.id === winnerId);
+    bestOfThreeSeries.recordRound(winningFighter?.playerSlot === 1 ? 1 : 2);
+  }
   screen = SCENE.GAME_OVER;
   paused = false;
   gameOverIndex = 0;
@@ -259,6 +284,7 @@ function updateMenu(frame: InputFrame): void {
   if (!selected) return;
   audio.play('menu');
   if (selected.id === 'play') sceneEvents.emit(SCENE_EVENTS.START_GAME, DEFAULT_MATCH_CONFIG);
+  else if (selected.id === 'daily') sceneEvents.emit(SCENE_EVENTS.START_GAME, createMatchConfig('daily'));
   else if (selected.id === 'options') screen = SCENE.OPTIONS;
   else if (selected.id === 'custom') {
     customConfig = DEFAULT_MATCH_CONFIG;
@@ -397,24 +423,15 @@ function updateGameOver(frame: InputFrame): void {
   else sceneEvents.emit(SCENE_EVENTS.RETURN_TO_MENU, undefined);
 }
 
-function mergeGameInput(frame: InputFrame): InputFrame {
-  queuedJump ||= frame.jumpPressed;
-  queuedSwitch ||= frame.switchPressed;
-  queuedPlayer2Jump ||= frame.player2.jumpPressed;
-  queuedPlayer2Switch ||= frame.player2.switchPressed;
+function clearOneShotInputEdges(frame: InputFrame): InputFrame {
   return {
     ...frame,
-    jumpPressed: queuedJump,
-    switchPressed: queuedSwitch,
-    player2: { ...frame.player2, jumpPressed: queuedPlayer2Jump, switchPressed: queuedPlayer2Switch },
+    leftPressed: false,
+    rightPressed: false,
+    jumpPressed: false,
+    switchPressed: false,
+    player2: { ...frame.player2, leftPressed: false, rightPressed: false, jumpPressed: false, switchPressed: false },
   };
-}
-
-function clearQueuedGameInput(): void {
-  queuedJump = false;
-  queuedSwitch = false;
-  queuedPlayer2Jump = false;
-  queuedPlayer2Switch = false;
 }
 
 function monitorParticleQuality(frameMilliseconds: number): void {
@@ -498,23 +515,26 @@ function loop(now: number): void {
     if (!paused && frame.pausePressed) paused = true;
     else if (paused) updatePause(frame);
     if (!paused && screen === SCENE.GAME && match) {
+      let tickFrame = tickInputSampler.sample(frame);
       accumulator = Math.min(accumulator + delta, stepSeconds * CONFIG.canvas.maxCatchUpSteps);
       let steps = 0;
       while (accumulator >= stepSeconds && steps < CONFIG.canvas.maxCatchUpSteps) {
-        match.update(stepSeconds, mergeGameInput(frame));
-        clearQueuedGameInput();
+        match.update(stepSeconds, tickFrame);
+        tickInputSampler.consumeTick();
         accumulator -= stepSeconds;
         steps += 1;
+        tickFrame = clearOneShotInputEdges(tickFrame);
         if (match.finished) {
           break;
         }
       }
     } else {
       accumulator = 0;
-      clearQueuedGameInput();
+      tickInputSampler.clear();
     }
   }
 
+  if (match) match.renderAlpha = paused ? 1 : Math.max(0, Math.min(1, accumulator / stepSeconds));
   const state: RenderState = {
     screen,
     match,
@@ -529,6 +549,7 @@ function loop(now: number): void {
     toastTimer: menuToastTimer,
     customIndex,
     customConfig,
+    series: bestOfThreeSeries?.snapshot() ?? null,
     lowQuality: lowQualityActive,
     touchMode: touchControls.activeForPlayer,
     touchCapable: touchControls.isTouchDevice || settings.touchControlsEnabled,

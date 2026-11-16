@@ -3,8 +3,8 @@ import type { WeaponId } from './config';
 export type FighterId = 'human' | 'player2' | 'bot' | 'bot2' | 'bot3';
 export type FighterController = 'human' | 'bot';
 export type DifficultyLevel = 'easy' | 'normal' | 'hard';
-export type MatchMode = 'versus' | 'ffa' | 'local' | 'duoBots' | 'survival';
-export type PowerUpId = 'shield' | 'overdrive';
+export type MatchMode = 'versus' | 'ffa' | 'local' | 'duoBots' | 'survival' | 'daily' | 'bestOf3';
+export type PowerUpId = 'shield' | 'overdrive' | 'spring';
 export type MarkerShape = 'circle' | 'square' | 'triangle' | 'diamond' | 'star';
 export type HatStyle = 'cap' | 'cowboy' | 'crown';
 
@@ -26,6 +26,8 @@ export interface Fighter {
   markerShape: MarkerShape;
   x: number;
   y: number;
+  previousX?: number;
+  previousY?: number;
   vx: number;
   vy: number;
   width: number;
@@ -53,12 +55,16 @@ export interface Fighter {
   contactCooldown: number;
   shieldTime: number;
   overdriveTime: number;
+  springTime: number;
+  hazardCooldownTicks: number;
 }
 
 export interface Projectile {
   active: boolean;
   x: number;
   y: number;
+  previousX?: number;
+  previousY?: number;
   vx: number;
   vy: number;
   radius: number;
@@ -73,6 +79,8 @@ export interface Particle {
   active: boolean;
   x: number;
   y: number;
+  previousX?: number;
+  previousY?: number;
   vx: number;
   vy: number;
   radius: number;
@@ -89,9 +97,12 @@ export interface Pickup {
   active: boolean;
   x: number;
   y: number;
+  previousX?: number;
+  previousY?: number;
   weapon: WeaponId;
   powerUp: PowerUpId | null;
   phase: number;
+  previousPhase?: number;
   respawnTimer: number;
 }
 
@@ -100,6 +111,34 @@ export interface Platform {
   y: number;
   width: number;
   height: number;
+}
+
+export interface ArenaHazard {
+  id: string;
+  schemaVersion: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  periodTicks: number;
+  activeTicks: number;
+  phaseTicks: number;
+  cooldownTicks: number;
+  damage: number;
+  knockbackX: number;
+  knockbackY: number;
+}
+
+export interface ArenaDefinition {
+  id: string;
+  schemaVersion: number;
+  label: string;
+  surface: string;
+  trim: string;
+  skyTop: string;
+  skyBottom: string;
+  platforms: readonly Platform[];
+  hazards: readonly ArenaHazard[];
 }
 
 export interface PlayerInput {

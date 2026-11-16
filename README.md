@@ -19,6 +19,8 @@ Vite serves the game at `http://localhost:3000`. No API keys or backend services
 
 ```sh
 corepack pnpm test   # Vitest unit, lifecycle and deterministic match simulations
+corepack pnpm exec playwright install chromium firefox webkit # one-time cross-browser setup
+corepack pnpm test:cross-browser # identical seeded checkpoints in Node, Chromium, Firefox and WebKit
 corepack pnpm build  # strict TypeScript check and optimized static output in dist/
 corepack pnpm dev:host # Vite bound to all interfaces for local-network phone testing
 corepack pnpm preview:host # preview the production build on the local network
@@ -26,15 +28,17 @@ corepack pnpm preview:host # preview the production build on the local network
 
 ## Match modes and setup
 
-Select **Play** for a direct 1v1 match against one bot. **Custom Game** provides five configurations:
+Select **Play** for a direct 1v1 match against one bot. **Custom Game** provides seven configurations:
 
 - **1v1 vs Bot** — one human and one bot.
 - **Free-for-All** — one human and 1–3 bots; the default is three bots.
 - **Local 2 Player** — two people on the same keyboard and no bots.
 - **2 Players + Bots** — two humans and 1–3 bots, all competing in the same free-for-all.
 - **Survival Waves** — one player faces escalating waves; each wave adds enemies up to the selected cap, with higher bot difficulty later in the run.
+- **Daily Challenge** — a fixed hard challenge with three bots, seeded by the current UTC date and ruleset. The same date/ruleset reproduces the same local match; no score is uploaded or saved.
+- **Best of Three** — a sequence of up to three 1v1 rounds against the CPU. The first side to two round wins takes the series; series scores last only until leaving the results flow.
 
-The setup screen also selects Easy/Normal/Hard bot difficulty, 1–5 stocks, and weapons on/off. Survival opponents have distinct Rusher, Sniper, and Bruiser spacing behavior. When weapons are off, pickups and firing are disabled; fighter contact provides a short cooldown-based shove so ring-outs are still possible. Matches rotate among Meadow, Scrapyard, and Sky Bridges layouts. Ring-outs cost a stock, eliminated fighters leave the match, respawning fighters briefly flicker with invulnerability, and the last contender wins. FFA results list elimination order and the winner.
+The setup screen also selects Easy/Normal/Hard bot difficulty, 1–5 stocks, and weapons on/off. Survival opponents have distinct Rusher, Sniper, and Bruiser spacing behavior. When weapons are off, pickups and firing are disabled; fighter contact provides a short cooldown-based shove so ring-outs are still possible. Matches rotate among Meadow, Scrapyard, Sky Bridges and Signal Station. Signal Station has a visible, timed pulse rail that can be avoided. Eliminated bots can drop Shield, Overdrive or temporary Spring Boots, which increase jump height and expire after a short duration. Ring-outs cost a stock, eliminated fighters leave the match, respawning fighters briefly flicker with invulnerability, and the last contender wins. FFA results list elimination order and the winner.
 
 ## Controls
 
@@ -46,7 +50,7 @@ The setup screen also selects Easy/Normal/Hard bot difficulty, 1–5 stocks, and
 | Switch weapon | K | Right Shift |
 | Pause / resume | Esc (pauses both players) | Esc (pauses both players) |
 
-Use ↑/↓ or W/S to navigate menus, Enter/Space to activate, and ←/→ to change a selected Custom Game or Options value. Matches use the pistol, shotgun, rocket launcher, and piercing railgun, each with different cadence, force, recoil and ammunition. Weapon pickups respawn, while eliminated bots can drop temporary Shield or Overdrive power-ups.
+Use ↑/↓ or W/S to navigate menus, Enter/Space to activate, and ←/→ to change a selected Custom Game or Options value. Matches use the pistol, shotgun, rocket launcher, and piercing railgun, each with different cadence, force, recoil and ammunition. Weapon pickups respawn, while eliminated bots can drop temporary power-ups.
 
 An attached gamepad also controls Player 1: left stick/D-pad to move, A (button 0) to jump/confirm, right trigger or X to shoot, Y to switch weapon, Start to pause, and B to go back. Keyboard or gamepad input hides the touch overlay; the next touch restores it on touch-capable devices.
 
@@ -70,12 +74,13 @@ Use the manual mobile checklist in [`QA_CHECKLIST.md`](./QA_CHECKLIST.md). No re
 
 ## Configuration and structure
 
-`src/config.ts` is the sole gameplay/presentation tuning source: title, dimensions, controls, arena/spawns, stocks, movement, weapons, pickups, bot difficulty values, particles, audio synthesis, performance thresholds, UI copy and settings defaults. In particular, each AI profile exposes reaction delay, imperfect aim/error, burst/spray cadence, bullet/rocket dodge probability, pickup priority, perception range and stuck timeout. Do not scatter balance values across systems.
+`src/config.ts` is the sole gameplay/presentation tuning source: title, dimensions, controls, arena/spawns, stocks, movement, weapons, pickups, bot difficulty values, particles, audio synthesis, performance thresholds, UI copy and settings defaults. It also supplies simulation/balance values used to compute the local `rulesetHash`; the fingerprint is compatibility metadata, not a cryptographic signature or anti-cheat proof. Daily seeds combine that hash with the UTC date. There is no replay recording, online leaderboard, server ticket or persistent best-of-three result yet. In particular, each AI profile exposes reaction delay, imperfect aim/error, burst/spray cadence, bullet/rocket dodge probability, pickup priority, perception range and stuck timeout. Do not scatter balance values across systems.
 
 - `src/main.ts` — loading/error handling, menu/custom/options/result states, touch and keyboard inputs, fixed 60 Hz simulation, lifecycle handling and adaptive graphics quality.
 - `src/engine/` — keyboard/pointer input, math helpers and fixed-capacity object pooling.
 - `src/ui/touch/` — virtual joystick math, per-pointer touch tracking, source switching and touch-control overlay.
 - `src/game/match-config.ts` — shared MatchConfig presets, bounds and validation.
+- `src/game/content.ts`, `src/game/daily-challenge.ts` and `src/game/best-of-three.ts` — versioned arena/hazard/power-up definitions, a UTC-seeded local challenge identity and an in-memory series state machine.
 - `src/ai/` — difficulty profiles, visibility/line-of-sight target selection, projectile dodge, pickup choice, recovery, stuck fallback, controller memory and tests.
 - `src/scenes/match.ts` and `src/entities/` — multi-fighter simulation, safe spawns/respawns, all-versus-all projectiles, pickups, effects, knockback and ring-outs.
 - `src/weapons/` — weapon definitions and firing behavior.

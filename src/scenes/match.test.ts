@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { AudioManager } from '../audio/audio';
 import { CONFIG, SCENE_EVENTS } from '../config';
 import { createMatchConfig } from '../game/match-config';
+import { runSeededCheckpointScenario } from '../game/determinism-scenario';
 import { defaultSettings } from '../storage/settings';
 import type { InputFrame, MatchConfig } from '../types';
 import { getDifficultyProfile } from '../ai/difficulty';
@@ -15,14 +16,6 @@ const neutralInput: InputFrame = {
   pointerX: 0, pointerY: 0, pointerPressed: false, pointerDown: false,
 };
 const step = 1 / CONFIG.canvas.targetFps;
-
-function seededRandom(seed: number): () => number {
-  let state = seed >>> 0;
-  return () => {
-    state = (state * 1664525 + 1013904223) >>> 0;
-    return state / 0x1_0000_0000;
-  };
-}
 
 function makeMatch(config: MatchConfig = createMatchConfig('versus')): MatchScene {
   return new MatchScene(defaultSettings(), new AudioManager(true), config);
@@ -62,7 +55,7 @@ describe('match roster and round lifecycle', () => {
   });
 
   it('selects complete arena layouts and applies collected power-up effects', () => {
-    const skyline = new MatchScene(defaultSettings(), new AudioManager(true), createMatchConfig('versus'), { random: () => 0.9 });
+    const skyline = new MatchScene(defaultSettings(), new AudioManager(true), createMatchConfig('versus'), { random: () => 0.7 });
     expect(skyline.arena.id).toBe('skyline');
     expect(skyline.platforms).toHaveLength(8);
     for (const bot of skyline.fighters.filter((fighter) => fighter.controller === 'bot')) { bot.stocks = 0; bot.dead = true; }
@@ -72,6 +65,53 @@ describe('match roster and round lifecycle', () => {
     drop.powerUp = 'overdrive';
     skyline.update(step, neutralInput);
     expect(skyline.human.overdriveTime).toBeGreaterThan(0);
+  });
+
+  it('applies a deterministic active hazard once per cooldown window and preserves hazard-caused ring-outs', () => {
+    const match = new MatchScene(defaultSettings(), new AudioManager(true), createMatchConfig('versus'), { random: () => 0.99 });
+    expect(match.arena.id).toBe('signal-station');
+    for (const bot of match.fighters.filter((fighter) => fighter.controller === 'bot')) { bot.dead = true; bot.respawnTimer = 100; }
+    const hazard = match.arena.hazards[0]!;
+    for (let tick = 0; tick < hazard.periodTicks - 1; tick += 1) match.update(step, neutralInput);
+    match.human.x = hazard.x + hazard.width * 0.95;
+    match.human.y = hazard.y;
+    match.human.vx = 0;
+    match.human.vy = 0;
+    match.update(step, neutralInput);
+    expect(match.human.damagePercent).toBe(hazard.damage);
+    expect(match.human.vx).toBeGreaterThan(0);
+    expect(match.human.hazardCooldownTicks).toBe(hazard.cooldownTicks);
+    const damageAfterFirstPulse = match.human.damagePercent;
+    match.update(step, neutralInput);
+    expect(match.human.damagePercent).toBe(damageAfterFirstPulse);
+    const stocksBeforeRingOut = match.human.stocks;
+    for (let tick = 0; tick < CONFIG.canvas.targetFps * 3; tick += 1) match.update(step, neutralInput);
+    expect(match.human.stocks).toBeLessThan(stocksBeforeRingOut);
+  });
+
+  it('boosts jumps while Spring Boots are active and expires them on simulation ticks', () => {
+    const match = makeMatch();
+    const bot = match.fighters.find((fighter) => fighter.controller === 'bot')!;
+    bot.dead = true;
+    bot.respawnTimer = 100;
+    const drop = match.pickups.items.find((pickup) => pickup.active)!;
+    drop.x = match.human.x;
+    drop.y = match.human.y + 20;
+    drop.powerUp = 'spring';
+    match.update(step, neutralInput);
+    expect(match.human.springTime).toBeGreaterThan(CONFIG.powerups.durationSeconds - step);
+
+    match.human.grounded = true;
+    match.human.jumpsUsed = 0;
+    match.human.vy = 0;
+    match.update(step, { ...neutralInput, jumpPressed: true });
+    expect(match.human.vy).toBeCloseTo(-CONFIG.fighters.jumpVelocity * CONFIG.powerups.spring.jumpVelocityScale + CONFIG.world.gravity * step, 4);
+
+    match.human.springTime = step * 2;
+    match.update(step, neutralInput);
+    expect(match.human.springTime).toBeGreaterThan(0);
+    match.update(step, neutralInput);
+    expect(match.human.springTime).toBe(0);
   });
 
   it('consumes a shield to absorb one incoming projectile hit', () => {
@@ -193,7 +233,7 @@ describe('headless bot-vs-bot simulations', () => {
     for (let levelIndex = 0; levelIndex < levels.length; levelIndex += 1) {
       const difficulty = levels[levelIndex]!;
       const config = createMatchConfig('ffa', { difficulty, stocks: 1 });
-      const match = new MatchScene(defaultSettings(), new AudioManager(true), config, { botVsBot: true, random: seededRandom(7100 + levelIndex) });
+      const match = new MatchScene(defaultSettings(), new AudioManager(true), config, { botVsBot: true, seed: 7100 + levelIndex });
       const frameLimit = CONFIG.canvas.targetFps * 120;
       let frame = 0;
       for (; frame < frameLimit && !match.finished; frame += 1) {
@@ -210,4 +250,34 @@ describe('headless bot-vs-bot simulations', () => {
       expect(match.fighters.every((fighter) => Number.isFinite(fighter.x) && Number.isFinite(fighter.y))).toBe(true);
     }
   }, 30_000);
+});
+
+describe('seeded simulation checkpoints', () => {
+  it('matches checkpoint hashes for identical seeds and tick-indexed inputs', () => {
+    const first = runSeededCheckpointScenario(0x51a7);
+    const second = runSeededCheckpointScenario(0x51a7);
+    expect(first.hashes).toHaveLength(6);
+    expect(first.hashes).toEqual(second.hashes);
+    expect(first.match.simulationTick).toBe(720);
+    expect(first.match.inputLog.snapshot().lastTick).toBe(720);
+  });
+
+  it('keeps visual quality, cosmetic RNG, and hit-stop out of authoritative state progression', () => {
+    const baseline = runSeededCheckpointScenario(0x51a7);
+    const variant = runSeededCheckpointScenario(0x51a7, { presentationVariant: true });
+    expect(variant.hashes).toEqual(baseline.hashes);
+  });
+
+  it('continues fighter motion and simulation ticks during visual hit-stop', () => {
+    const match = makeMatch();
+    match.human.grounded = true;
+    match.hitstopRemaining = 0.1;
+    const startX = match.human.x;
+    const startAnimationTime = match.human.animationTime;
+    match.update(step, { ...neutralInput, right: true });
+    expect(match.simulationTick).toBe(1);
+    expect(match.human.x).toBeGreaterThan(startX);
+    expect(match.human.animationTime).toBe(startAnimationTime);
+    expect(match.hitstopRemaining).toBeGreaterThan(0);
+  });
 });

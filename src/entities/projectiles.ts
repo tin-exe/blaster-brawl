@@ -1,5 +1,6 @@
 import { CONFIG, type WeaponId } from '../config';
 import { ObjectPool } from '../engine/pool';
+import { directionForAngle } from '../engine/deterministic-trig';
 import type { FighterId, Projectile } from '../types';
 
 function createProjectile(): Projectile {
@@ -15,8 +16,11 @@ export class ProjectileSystem {
     const definition = CONFIG.weapons[weapon];
     projectile.x = x;
     projectile.y = y;
-    projectile.vx = Math.cos(angle) * definition.projectileSpeed;
-    projectile.vy = Math.sin(angle) * definition.projectileSpeed;
+    projectile.previousX = x;
+    projectile.previousY = y;
+    const direction = directionForAngle(angle);
+    projectile.vx = direction.x * definition.projectileSpeed;
+    projectile.vy = direction.y * definition.projectileSpeed;
     projectile.radius = definition.projectileRadius;
     projectile.owner = owner;
     projectile.weapon = weapon;
@@ -29,6 +33,8 @@ export class ProjectileSystem {
   update(dt: number): void {
     for (const projectile of this.pool.items) {
       if (!projectile.active) continue;
+      projectile.previousX = projectile.x;
+      projectile.previousY = projectile.y;
       projectile.life -= dt;
       projectile.trailTimer -= dt;
       projectile.x += projectile.vx * dt;

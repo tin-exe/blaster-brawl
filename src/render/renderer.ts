@@ -1,9 +1,12 @@
 import { CONFIG, SCENE } from '../config';
-import type { Fighter, HatStyle, Particle, Pickup, Platform, Projectile } from '../types';
+import type { ArenaDefinition, Fighter, HatStyle, Particle, Pickup, Platform, Projectile } from '../types';
 import type { MatchScene } from '../scenes/match';
 import type { GameSettings } from '../storage/settings';
 import { matchModeLabel } from '../game/match-config';
 import type { MatchConfig, MarkerShape } from '../types';
+import { isHazardActiveAtTick } from '../game/content';
+import type { BestOfThreeSnapshot } from '../game/best-of-three';
+import { t } from '../i18n';
 
 export type ScreenMode = (typeof SCENE)[keyof typeof SCENE];
 
@@ -21,6 +24,7 @@ export interface RenderState {
   toastTimer: number;
   customIndex: number;
   customConfig: MatchConfig;
+  series: BestOfThreeSnapshot | null;
   lowQuality: boolean;
   touchMode: boolean;
   touchCapable: boolean;
@@ -90,7 +94,7 @@ function polygon(ctx: CanvasRenderingContext2D, points: readonly [number, number
   ctx.fill();
 }
 
-function drawBackdrop(ctx: CanvasRenderingContext2D, cameraX: number, elapsed: number, lowQuality = false, arena: (typeof CONFIG.world.arenas)[number] = CONFIG.world.arenas[0]): void {
+function drawBackdrop(ctx: CanvasRenderingContext2D, cameraX: number, elapsed: number, lowQuality = false, arena: ArenaDefinition = CONFIG.world.arenas[0]): void {
   const parallaxX = lowQuality ? 0 : cameraX;
   const sky = ctx.createLinearGradient(0, 0, 0, CONFIG.canvas.height);
   sky.addColorStop(0, arena.skyTop);
@@ -180,7 +184,7 @@ function drawHut(ctx: CanvasRenderingContext2D, x: number, ground: number): void
   ctx.restore();
 }
 
-function drawWorld(ctx: CanvasRenderingContext2D, cameraX: number, platforms: readonly Platform[], arena: (typeof CONFIG.world.arenas)[number]): void {
+function drawWorld(ctx: CanvasRenderingContext2D, cameraX: number, platforms: readonly Platform[], arena: ArenaDefinition): void {
   ctx.save();
   ctx.translate(-cameraX, 0);
   for (const x of [125, 625, 1015, 1430]) drawTree(ctx, x, 410, x > 1200 ? 0.86 : 1);
@@ -271,8 +275,14 @@ function drawMarkerShape(ctx: CanvasRenderingContext2D, x: number, y: number, sh
   ctx.restore();
 }
 
-function drawFighter(ctx: CanvasRenderingContext2D, fighter: Fighter): void {
+function interpolate(previous: number | undefined, current: number, alpha: number): number {
+  return previous === undefined ? current : previous + (current - previous) * alpha;
+}
+
+function drawFighter(ctx: CanvasRenderingContext2D, fighter: Fighter, alpha = 1): void {
   if (fighter.dead) return;
+  const x = interpolate(fighter.previousX, fighter.x, alpha);
+  const y = interpolate(fighter.previousY, fighter.y, alpha);
   const run = fighter.grounded && Math.abs(fighter.vx) > 30;
   const bob = run ? Math.sin(fighter.animationTime * 18) * 2.5 : fighter.grounded ? Math.sin(fighter.animationTime * 3) * 1.2 : 0;
   const fallTilt = !fighter.grounded && fighter.vy > 180 ? Math.min(0.42, fighter.vy / 2100) : 0;
@@ -284,16 +294,16 @@ function drawFighter(ctx: CanvasRenderingContext2D, fighter: Fighter): void {
   const bodyScaleX = 2 - bodyScaleY;
   const blink = fighter.invulnerable > 0 && Math.floor(fighter.animationTime * 17) % 2 === 0;
   ctx.save();
-  ctx.translate(fighter.x, fighter.y + bob + fighter.height * 0.5);
+  ctx.translate(x, y + bob + fighter.height * 0.5);
   ctx.rotate((fighter.facing < 0 ? -1 : 1) * fallTilt + (fighter.shootTimer > 0 ? -0.06 : 0));
   ctx.scale(fighter.facing * bodyScaleX, bodyScaleY);
   ctx.globalAlpha = blink ? 0.62 : 1;
 
-  if (fighter.shieldTime > 0 || fighter.overdriveTime > 0) {
+  if (fighter.shieldTime > 0 || fighter.overdriveTime > 0 || fighter.springTime > 0) {
     ctx.beginPath();
     ctx.arc(0, 0, 31, 0, Math.PI * 2);
     ctx.lineWidth = 3;
-    ctx.strokeStyle = fighter.shieldTime > 0 ? CONFIG.powerups.shield.color : CONFIG.powerups.overdrive.color;
+    ctx.strokeStyle = fighter.shieldTime > 0 ? CONFIG.powerups.shield.color : fighter.overdriveTime > 0 ? CONFIG.powerups.overdrive.color : CONFIG.powerups.spring.color;
     ctx.globalAlpha = 0.72 + Math.sin(fighter.animationTime * 8) * 0.16;
     ctx.stroke();
     ctx.globalAlpha = blink ? 0.62 : 1;
@@ -359,18 +369,18 @@ function drawFighter(ctx: CanvasRenderingContext2D, fighter: Fighter): void {
   ctx.fillRect(10, -2, 7, 4);
   ctx.restore();
   const labelWidth = Math.max(70, fighter.displayName.length * 7 + 31);
-  roundedRectPath(ctx, fighter.x - labelWidth * 0.5, fighter.y - 30, labelWidth, 21, 7);
+  roundedRectPath(ctx, x - labelWidth * 0.5, y - 30, labelWidth, 21, 7);
   ctx.fillStyle = 'rgba(23,33,55,0.92)';
   ctx.fill();
   ctx.lineWidth = 2;
   ctx.strokeStyle = INK;
   ctx.stroke();
-  drawMarkerShape(ctx, fighter.x - labelWidth * 0.5 + 12, fighter.y - 19, fighter.markerShape, fighter.color, 5.5);
-  text(ctx, `${fighter.markerNumber} ${fighter.displayName}`, fighter.x + 6, fighter.y - 19, 10, PAPER, 'center', 2, 950);
+  drawMarkerShape(ctx, x - labelWidth * 0.5 + 12, y - 19, fighter.markerShape, fighter.color, 5.5);
+  text(ctx, `${fighter.markerNumber} ${fighter.displayName}`, x + 6, y - 19, 10, PAPER, 'center', 2, 950);
   const gaugeWidth = 74;
   const gaugeHeight = 11;
-  const gaugeX = fighter.x - gaugeWidth * 0.5;
-  const gaugeY = fighter.y + fighter.height + 7;
+  const gaugeX = x - gaugeWidth * 0.5;
+  const gaugeY = y + fighter.height + 7;
   const damage = clampNumber(fighter.damagePercent, 0, CONFIG.combat.maximumDamage);
   const ratio = damage / CONFIG.combat.maximumDamage;
   const gaugeColor = ratio < 0.34 ? '#72e39a' : ratio < 0.67 ? '#ffd05b' : '#ff625c';
@@ -387,14 +397,17 @@ function drawFighter(ctx: CanvasRenderingContext2D, fighter: Fighter): void {
   }
 }
 
-function drawPickup(ctx: CanvasRenderingContext2D, pickup: Pickup): void {
+function drawPickup(ctx: CanvasRenderingContext2D, pickup: Pickup, alpha = 1): void {
   const config = CONFIG.weapons[pickup.weapon as keyof typeof CONFIG.weapons];
   const powerConfig = pickup.powerUp ? CONFIG.powerups[pickup.powerUp] : null;
   if (!config || (pickup.powerUp && !powerConfig)) return;
-  const float = Math.sin(pickup.phase) * CONFIG.combat.pickupBobPixels;
+  const x = interpolate(pickup.previousX, pickup.x, alpha);
+  const y = interpolate(pickup.previousY, pickup.y, alpha);
+  const phase = interpolate(pickup.previousPhase, pickup.phase, alpha);
+  const float = Math.sin(phase) * CONFIG.combat.pickupBobPixels;
   ctx.save();
-  ctx.translate(pickup.x, pickup.y + float);
-  ctx.rotate(Math.sin(pickup.phase * 0.45) * 0.08);
+  ctx.translate(x, y + float);
+  ctx.rotate(Math.sin(phase * 0.45) * 0.08);
   ctx.beginPath();
   ctx.arc(0, 0, 19, 0, Math.PI * 2);
   ctx.fillStyle = '#fff7db';
@@ -414,9 +427,9 @@ function drawPickup(ctx: CanvasRenderingContext2D, pickup: Pickup): void {
   ctx.restore();
 }
 
-function drawProjectile(ctx: CanvasRenderingContext2D, projectile: Projectile): void {
+function drawProjectile(ctx: CanvasRenderingContext2D, projectile: Projectile, alpha = 1): void {
   ctx.save();
-  ctx.translate(projectile.x, projectile.y);
+  ctx.translate(interpolate(projectile.previousX, projectile.x, alpha), interpolate(projectile.previousY, projectile.y, alpha));
   ctx.rotate(Math.atan2(projectile.vy, projectile.vx));
   const color = CONFIG.weapons[projectile.weapon].color;
   if (projectile.weapon === 'railgun') {
@@ -453,22 +466,24 @@ function drawProjectile(ctx: CanvasRenderingContext2D, projectile: Projectile): 
   ctx.restore();
 }
 
-function drawParticles(ctx: CanvasRenderingContext2D, particles: readonly Particle[]): void {
+function drawParticles(ctx: CanvasRenderingContext2D, particles: readonly Particle[], interpolationAlpha = 1): void {
   for (const particle of particles) {
     if (!particle.active) continue;
-    const alpha = Math.max(0, particle.life / particle.maxLife);
-    ctx.globalAlpha = alpha;
+    const x = interpolate(particle.previousX, particle.x, interpolationAlpha);
+    const y = interpolate(particle.previousY, particle.y, interpolationAlpha);
+    const opacity = Math.max(0, particle.life / particle.maxLife);
+    ctx.globalAlpha = opacity;
     ctx.fillStyle = particle.color;
     if (particle.ring) {
       ctx.strokeStyle = particle.color;
-      ctx.lineWidth = 1.5 + alpha * 3.5;
+      ctx.lineWidth = 1.5 + opacity * 3.5;
       ctx.beginPath();
-      ctx.arc(particle.x, particle.y, particle.radius, 0, Math.PI * 2);
+      ctx.arc(x, y, particle.radius, 0, Math.PI * 2);
       ctx.stroke();
-    } else if (particle.square) ctx.fillRect(particle.x - particle.radius * 0.5, particle.y - particle.radius * 0.5, particle.radius, particle.radius);
+    } else if (particle.square) ctx.fillRect(x - particle.radius * 0.5, y - particle.radius * 0.5, particle.radius, particle.radius);
     else {
       ctx.beginPath();
-      ctx.arc(particle.x, particle.y, particle.radius, 0, Math.PI * 2);
+      ctx.arc(x, y, particle.radius, 0, Math.PI * 2);
       ctx.fill();
     }
   }
@@ -493,9 +508,9 @@ function drawFighterCard(ctx: CanvasRenderingContext2D, fighter: Fighter, x: num
   const weapon = CONFIG.weapons[fighter.weapon];
   const weaponText = !fighter.stocks ? 'OUT' : !weaponsEnabled ? 'UNARMED' : fighter.dead ? 'RESPAWNING' : `${weapon.label} · ${fighter.ammo[fighter.weapon]}`;
   text(ctx, weaponText, x + 9, y + 55, Math.min(10, width / 15), fighter.dead ? '#c4cad3' : weaponsEnabled ? weapon.color : '#fff', 'left', 2, 900);
-  const buffTime = Math.max(fighter.shieldTime, fighter.overdriveTime);
+  const buffTime = Math.max(fighter.shieldTime, fighter.overdriveTime, fighter.springTime);
   if (buffTime > 0) {
-    const color = fighter.shieldTime > 0 ? CONFIG.powerups.shield.color : CONFIG.powerups.overdrive.color;
+    const color = fighter.shieldTime > 0 ? CONFIG.powerups.shield.color : fighter.overdriveTime > 0 ? CONFIG.powerups.overdrive.color : CONFIG.powerups.spring.color;
     const meterWidth = width - 18;
     roundedRectPath(ctx, x + 9, y + 60, meterWidth, 3, 2);
     ctx.fillStyle = 'rgba(255,255,255,0.22)';
@@ -506,16 +521,18 @@ function drawFighterCard(ctx: CanvasRenderingContext2D, fighter: Fighter, x: num
   }
 }
 
-function drawOffscreenIndicators(ctx: CanvasRenderingContext2D, match: MatchScene): void {
+function drawOffscreenIndicators(ctx: CanvasRenderingContext2D, match: MatchScene, alpha: number, cameraX: number): void {
   for (const fighter of match.fighters) {
     if (fighter.dead || fighter.stocks <= 0) continue;
-    const screenX = fighter.x - match.cameraX;
+    const fighterX = interpolate(fighter.previousX, fighter.x, alpha);
+    const fighterY = interpolate(fighter.previousY, fighter.y, alpha);
+    const screenX = fighterX - cameraX;
     const outsideX = screenX < 10 || screenX > CONFIG.canvas.width - 10;
-    const outsideY = fighter.y < -34 || fighter.y > CONFIG.canvas.height - 40;
+    const outsideY = fighterY < -34 || fighterY > CONFIG.canvas.height - 40;
     if (!outsideX && !outsideY) continue;
     const x = clampNumber(screenX, CONFIG.hud.offscreenMargin, CONFIG.canvas.width - CONFIG.hud.offscreenMargin);
-    const y = clampNumber(fighter.y + fighter.height * 0.5, 112, CONFIG.canvas.height - 72);
-    const angle = outsideX ? (screenX < CONFIG.canvas.width * 0.5 ? Math.PI : 0) : fighter.y < 0 ? -Math.PI * 0.5 : Math.PI * 0.5;
+    const y = clampNumber(fighterY + fighter.height * 0.5, 112, CONFIG.canvas.height - 72);
+    const angle = outsideX ? (screenX < CONFIG.canvas.width * 0.5 ? Math.PI : 0) : fighterY < 0 ? -Math.PI * 0.5 : Math.PI * 0.5;
     ctx.save();
     ctx.translate(x, y);
     ctx.rotate(angle);
@@ -532,7 +549,26 @@ function clampNumber(value: number, minimum: number, maximum: number): number {
   return Math.max(minimum, Math.min(maximum, value));
 }
 
-function drawHud(ctx: CanvasRenderingContext2D, match: MatchScene, touchMode: boolean): void {
+function drawArenaHazards(ctx: CanvasRenderingContext2D, match: MatchScene): void {
+  for (const hazard of match.arena.hazards) {
+    const active = isHazardActiveAtTick(hazard, match.simulationTick);
+    roundedRectPath(ctx, hazard.x, hazard.y, hazard.width, hazard.height, 7);
+    ctx.fillStyle = active ? 'rgba(255,92,92,0.9)' : 'rgba(255,225,107,0.58)';
+    ctx.fill();
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    ctx.save();
+    ctx.setLineDash([5, 4]);
+    ctx.strokeStyle = active ? '#fff8df' : '#fff1b2';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(hazard.x + 5, hazard.y + 5, hazard.width - 10, hazard.height - 10);
+    ctx.restore();
+    text(ctx, t(active ? 'hazard.active' : 'hazard.signalPulse'), hazard.x + hazard.width * 0.5, hazard.y - 12, 8, active ? '#ff806c' : '#ffe16b', 'center', 2, 900);
+  }
+}
+
+function drawHud(ctx: CanvasRenderingContext2D, match: MatchScene, touchMode: boolean, alpha: number, series: BestOfThreeSnapshot | null): void {
   const count = match.fighters.length;
   const margin = CONFIG.hud.margin;
   const gap = 6;
@@ -541,21 +577,28 @@ function drawHud(ctx: CanvasRenderingContext2D, match: MatchScene, touchMode: bo
     const fighter = match.fighters[index];
     if (fighter) drawFighterCard(ctx, fighter, margin + index * (width + gap), margin, width, match.config.stocks, match.config.weaponsEnabled);
   }
-  panel(ctx, CONFIG.canvas.width * 0.5 - 86, 88, 172, 35, 'rgba(25,37,58,0.9)');
+  const centerWidth = match.config.mode === 'bestOf3' ? 310 : match.config.mode === 'daily' ? 230 : 194;
+  panel(ctx, CONFIG.canvas.width * 0.5 - centerWidth * 0.5, 88, centerWidth, 35, 'rgba(25,37,58,0.9)');
   const centerLabel = match.config.mode === 'survival'
     ? `WAVE ${String(match.wave).padStart(2, '0')} · ${match.arena.label}`
+    : match.config.mode === 'daily'
+      ? t('daily.hud', { date: match.challengeDate ?? 'UTC' })
+      : match.config.mode === 'bestOf3' && series
+        ? t('series.score', { round: Math.min(3, series.roundsPlayed + 1), player1: series.player1Wins, player2: series.player2Wins })
     : `${Math.floor(match.elapsed / 60).toString().padStart(2, '0')}:${Math.floor(match.elapsed % 60).toString().padStart(2, '0')}`;
-  text(ctx, centerLabel, CONFIG.canvas.width * 0.5, 105, match.config.mode === 'survival' ? 13 : 16, PAPER, 'center', 3, 900);
+  text(ctx, centerLabel, CONFIG.canvas.width * 0.5, 105, match.config.mode === 'bestOf3' ? 11 : match.config.mode === 'daily' ? 12 : match.config.mode === 'survival' ? 13 : 16, PAPER, 'center', 3, 900);
   text(ctx, touchMode ? 'MOVE · JUMP · SHOOT · SWAP · PAUSE' : CONFIG.copy.controls, CONFIG.canvas.width * 0.5, CONFIG.canvas.height - 16, 9, '#fff8df', 'center', 3, 850);
 
   ctx.save();
-  ctx.translate(-match.cameraX, 0);
-  for (const pickup of match.pickups.items) if (pickup.active) drawPickup(ctx, pickup);
-  for (const projectile of match.projectiles.pool.items) if (projectile.active) drawProjectile(ctx, projectile);
-  drawParticles(ctx, match.effects.pool.items);
-  for (const fighter of match.fighters) drawFighter(ctx, fighter);
+  const cameraX = interpolate(match.previousCameraX, match.cameraX, alpha);
+  ctx.translate(-cameraX, 0);
+  drawArenaHazards(ctx, match);
+  for (const pickup of match.pickups.items) if (pickup.active) drawPickup(ctx, pickup, alpha);
+  for (const projectile of match.projectiles.pool.items) if (projectile.active) drawProjectile(ctx, projectile, alpha);
+  drawParticles(ctx, match.effects.pool.items, alpha);
+  for (const fighter of match.fighters) drawFighter(ctx, fighter, alpha);
   ctx.restore();
-  drawOffscreenIndicators(ctx, match);
+  drawOffscreenIndicators(ctx, match, alpha, cameraX);
   if (match.screenFlash > 0) {
     ctx.save();
     ctx.globalAlpha = match.screenFlash;
@@ -632,6 +675,7 @@ function drawMenu(ctx: CanvasRenderingContext2D, state: RenderState): void {
   const y = 180;
   const hints: Record<string, string> = {
     play: 'QUICK 1V1 · STARTS NOW',
+    daily: t('menu.dailyHint'),
     campaign: 'A STORY RUN IS COMING SOON',
     custom: 'CHOOSE THE RULES OF THE BRAWL',
     library: 'MEET THE WEAPONS',
@@ -739,7 +783,12 @@ function drawPause(ctx: CanvasRenderingContext2D, state: RenderState): void {
 function drawGameOver(ctx: CanvasRenderingContext2D, state: RenderState): void {
   const winner = state.match?.winnerFighter ?? null;
   const won = winner?.playerSlot === 1;
-  const winnerName = state.match?.config.mode === 'survival' ? `RUN ENDED AT WAVE ${state.match.wave}` : winner?.displayName.toUpperCase() ?? 'NO WINNER';
+  const inSeries = state.match?.config.mode === 'bestOf3' && state.series !== null;
+  const winnerName = state.match?.config.mode === 'survival'
+    ? `RUN ENDED AT WAVE ${state.match.wave}`
+    : inSeries && state.series?.complete
+      ? state.series.champion === 1 ? t('series.playerOne') : t('series.cpu')
+      : winner?.displayName.toUpperCase() ?? 'NO WINNER';
   ctx.fillStyle = 'rgba(12,18,32,0.56)';
   ctx.fillRect(0, 0, CONFIG.canvas.width, CONFIG.canvas.height);
   panel(ctx, 265, 112, 430, 324, 'rgba(22,31,50,0.96)');
@@ -750,12 +799,21 @@ function drawGameOver(ctx: CanvasRenderingContext2D, state: RenderState): void {
     polygon(ctx, [[x, y - 9], [x + 4, y - 2], [x + 12, y], [x + 4, y + 3], [x, y + 11], [x - 4, y + 3], [x - 12, y], [x - 4, y - 2]], ctx.fillStyle);
   }
   text(ctx, won ? CONFIG.copy.resultWin : CONFIG.copy.resultLose, CONFIG.canvas.width * 0.5, 219, 43, won ? '#ffe16b' : '#ff806c', 'center', 8, 1000);
-  text(ctx, state.match?.config.mode === 'survival' ? winnerName : `WINNER: ${winnerName}`, CONFIG.canvas.width * 0.5, 263, 14, PAPER, 'center', 3, 900);
+  const winnerLabel = inSeries && state.series?.complete
+    ? t('series.champion', { name: winnerName })
+    : inSeries
+      ? t('series.roundWinner', { name: winnerName })
+      : state.match?.config.mode === 'survival' ? winnerName : `WINNER: ${winnerName}`;
+  text(ctx, winnerLabel, CONFIG.canvas.width * 0.5, 263, 14, PAPER, 'center', 3, 900);
   const order = state.match?.eliminationOrder.map((id, index) => {
     const fighter = state.match?.fighters.find((candidate) => candidate.id === id);
     return `${index + 1}. ${fighter?.displayName.toUpperCase() ?? 'FIGHTER'}`;
   }).join('  ·  ');
-  if (order) text(ctx, `OUT ORDER: ${order}`, CONFIG.canvas.width * 0.5, 289, 10, '#dce6ec', 'center', 2, 850);
+  if (inSeries && state.series) {
+    text(ctx, t('series.score', { round: state.series.roundsPlayed, player1: state.series.player1Wins, player2: state.series.player2Wins }), CONFIG.canvas.width * 0.5, 289, 10, '#dce6ec', 'center', 2, 850);
+  } else if (state.match?.config.mode === 'daily') {
+    text(ctx, t('daily.result', { date: state.match.challengeDate ?? 'UTC' }), CONFIG.canvas.width * 0.5, 289, 10, '#dce6ec', 'center', 2, 850);
+  } else if (order) text(ctx, `OUT ORDER: ${order}`, CONFIG.canvas.width * 0.5, 289, 10, '#dce6ec', 'center', 2, 850);
   const items = CONFIG.scene.gameOverActions;
   for (let i = 0; i < items.length; i += 1) {
     const y = 333 + i * 42;
@@ -765,13 +823,17 @@ function drawGameOver(ctx: CanvasRenderingContext2D, state: RenderState): void {
       ctx.fill();
       text(ctx, '▶', 361, y + (state.pointerDown ? 2 : 0), 15, '#ff806c', 'center', 2, 1000);
     }
-    text(ctx, items[i] ?? '', 388, y + (i === state.gameOverIndex && state.pointerDown ? 2 : 0), 20, '#fff', 'left', 4, 950);
+    const label = i === CONFIG.scene.gameOverActionIndex.replay && inSeries
+      ? state.series?.complete ? t('series.newSeries') : t('series.nextRound')
+      : i === CONFIG.scene.gameOverActionIndex.menu && inSeries ? t('series.backToMenu') : items[i] ?? '';
+    text(ctx, label, 388, y + (i === state.gameOverIndex && state.pointerDown ? 2 : 0), 20, '#fff', 'left', 4, 950);
   }
 }
 
 export function renderGame(ctx: CanvasRenderingContext2D, state: RenderState): void {
   ctx.save();
   const inMatchView = state.screen === SCENE.GAME;
+  const renderAlpha = state.match?.renderAlpha ?? 1;
   const shake = inMatchView && !state.paused ? state.match?.shake ?? 0 : 0;
   if (shake > 0) ctx.translate((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake);
   const cameraZoom = inMatchView && !state.paused ? state.match?.cameraZoom ?? 0 : 0;
@@ -780,19 +842,19 @@ export function renderGame(ctx: CanvasRenderingContext2D, state: RenderState): v
     ctx.scale(1 + cameraZoom, 1 + cameraZoom);
     ctx.translate(-CONFIG.canvas.width * 0.5, -CONFIG.canvas.height * 0.5);
   }
-  const cameraX = state.match?.cameraX ?? 0;
+  const cameraX = state.match ? interpolate(state.match.previousCameraX, state.match.cameraX, renderAlpha) : 0;
   const arena = state.match?.arena ?? CONFIG.world.arenas[0];
   const platforms = state.match?.platforms ?? arena.platforms;
   drawBackdrop(ctx, cameraX, state.elapsed, state.lowQuality, arena);
   drawWorld(ctx, cameraX, platforms, arena);
   if (state.match && (state.screen === SCENE.GAME || state.screen === SCENE.GAME_OVER)) {
-    drawHud(ctx, state.match, state.touchMode);
+    drawHud(ctx, state.match, state.touchMode, renderAlpha, state.series);
   } else {
     const match = state.match;
     if (match) {
       ctx.save();
       ctx.translate(-match.cameraX, 0);
-      for (const fighter of match.fighters) drawFighter(ctx, fighter);
+      for (const fighter of match.fighters) drawFighter(ctx, fighter, renderAlpha);
       ctx.restore();
     }
   }

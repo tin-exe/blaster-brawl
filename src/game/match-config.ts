@@ -7,6 +7,10 @@ export function createMatchConfig(
   mode: MatchMode = 'versus',
   overrides: Partial<Omit<MatchConfig, 'mode' | 'humanPlayers' | 'botCount'>> & { botCount?: number } = {},
 ): MatchConfig {
+  if (mode === 'daily') {
+    const dailyMode = CONFIG.match.modes.find((candidate) => candidate.id === 'daily')!;
+    return { mode: 'daily', humanPlayers: dailyMode.humanPlayers, botCount: dailyMode.defaultBots, difficulty: 'hard', stocks: 3, weaponsEnabled: true };
+  }
   const modeSpec = CONFIG.match.modes.find((candidate) => candidate.id === mode) ?? CONFIG.match.modes[0];
   const rawBotCount = overrides.botCount ?? modeSpec.defaultBots;
   const botCount = Math.max(modeSpec.minBots, Math.min(modeSpec.maxBots, Math.round(rawBotCount))) as MatchConfig['botCount'];
@@ -41,6 +45,7 @@ export function cycleMatchMode(current: MatchMode, direction: -1 | 1): MatchMode
 }
 
 export function adjustMatchConfig(config: MatchConfig, field: 'mode' | 'bots' | 'difficulty' | 'stocks' | 'weapons', direction: -1 | 1): MatchConfig {
+  if (config.mode === 'daily' && field !== 'mode') return config;
   if (field === 'mode') {
     const nextMode = cycleMatchMode(config.mode, direction);
     return createMatchConfig(nextMode, { difficulty: config.difficulty, stocks: config.stocks, weaponsEnabled: config.weaponsEnabled });

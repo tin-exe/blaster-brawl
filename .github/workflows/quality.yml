@@ -1,0 +1,58 @@
+name: Quality
+
+on:
+  push:
+    branches: [main, integration]
+  pull_request:
+    branches: [main, integration]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.12.4
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install from lockfile
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright engines
+        run: pnpm exec playwright install --with-deps chromium firefox webkit
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Test
+        run: pnpm test
+
+      - name: Compare deterministic simulation checkpoints across engines
+        run: pnpm test:cross-browser
+
+      - name: Production build
+        run: pnpm build
+
+      - name: Dependency audit
+        run: pnpm audit --audit-level=moderate
+
+      - name: Secret-pattern scan
+        run: pnpm scan:secrets
+
+      - name: Check bundle budgets
+        run: pnpm check:bundle

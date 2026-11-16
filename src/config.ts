@@ -18,6 +18,8 @@ export const SCENE_EVENTS = {
 
 const CUSTOM_GAME_FIELDS = ['mode', 'bots', 'difficulty', 'stocks', 'weapons'] as const;
 
+import { t } from './i18n';
+
 export const CONFIG = {
   title: 'BLASTER BRAWL',
   version: 1,
@@ -51,24 +53,43 @@ export const CONFIG = {
     arenas: [
       {
         id: 'meadow', label: 'MEADOW', surface: '#70b84e', trim: '#855b43', skyTop: '#7bdcf4', skyBottom: '#ffe8a9',
+        schemaVersion: 1,
         platforms: [
           { x: 74, y: 448, width: 390, height: 54 }, { x: 516, y: 448, width: 496, height: 54 }, { x: 1064, y: 448, width: 392, height: 54 },
           { x: 245, y: 329, width: 246, height: 27 }, { x: 650, y: 277, width: 250, height: 27 }, { x: 1054, y: 329, width: 238, height: 27 },
         ],
+        hazards: [],
       },
       {
         id: 'foundry', label: 'SCRAPYARD', surface: '#d36f48', trim: '#555568', skyTop: '#606f91', skyBottom: '#f0b879',
+        schemaVersion: 1,
         platforms: [
           { x: 74, y: 448, width: 390, height: 54 }, { x: 516, y: 448, width: 496, height: 54 }, { x: 1064, y: 448, width: 392, height: 54 },
           { x: 178, y: 344, width: 250, height: 27 }, { x: 590, y: 266, width: 304, height: 27 }, { x: 1100, y: 344, width: 250, height: 27 },
         ],
+        hazards: [],
       },
       {
         id: 'skyline', label: 'SKY BRIDGES', surface: '#49a8bd', trim: '#44577a', skyTop: '#657ee8', skyBottom: '#ffcaab',
+        schemaVersion: 1,
         platforms: [
           { x: 74, y: 448, width: 310, height: 54 }, { x: 438, y: 448, width: 330, height: 54 }, { x: 818, y: 448, width: 310, height: 54 }, { x: 1178, y: 448, width: 278, height: 54 },
           { x: 136, y: 326, width: 228, height: 27 }, { x: 500, y: 244, width: 242, height: 27 }, { x: 900, y: 315, width: 218, height: 27 }, { x: 1222, y: 260, width: 198, height: 27 },
         ],
+        hazards: [],
+      },
+      {
+        id: 'signal-station', label: t('arena.signalStation'), schemaVersion: 1,
+        surface: '#55b8a8', trim: '#304f67', skyTop: '#405d91', skyBottom: '#e7b58d',
+        platforms: [
+          { x: 74, y: 448, width: 330, height: 54 }, { x: 1160, y: 448, width: 296, height: 54 },
+          { x: 245, y: 329, width: 248, height: 27 }, { x: 610, y: 277, width: 246, height: 27 }, { x: 1040, y: 329, width: 258, height: 27 },
+        ],
+        hazards: [{
+          id: 'signal-pulse-rail', schemaVersion: 1, x: 786, y: 219, width: 60, height: 58,
+          periodTicks: 180, activeTicks: 45, phaseTicks: 0, cooldownTicks: 90,
+          damage: 18, knockbackX: 520, knockbackY: -120,
+        }],
       },
     ] as const,
     pickupSpawns: [
@@ -109,11 +130,14 @@ export const CONFIG = {
     railgun: { label: 'RAILGUN', fireInterval: 0.96, damage: 1.18, knockback: 610, recoil: 110, ammo: 4, pickupAmmo: 2, projectileSpeed: 1120, projectileRadius: 5, pellets: 1, spreadRadians: 0, lifetime: 1.35, explosionRadius: 0, color: '#68e8ff' },
   },
   powerups: {
+    schemaVersion: 1,
+    contentVersion: '2.0.0',
     dropChance: 0.55,
     durationSeconds: 5.5,
     overdriveFireScale: 0.58,
-    shield: { label: 'SHIELD', color: '#67e9ff' },
-    overdrive: { label: 'OVERDRIVE', color: '#ff71d4' },
+    shield: { id: 'shield', schemaVersion: 1, label: 'SHIELD', color: '#67e9ff' },
+    overdrive: { id: 'overdrive', schemaVersion: 1, label: 'OVERDRIVE', color: '#ff71d4' },
+    spring: { id: 'spring', schemaVersion: 1, label: t('powerup.spring'), color: '#f6c95c', jumpVelocityScale: 1.28 },
   },
   combat: {
     hitStunSeconds: 0.22,
@@ -177,6 +201,8 @@ export const CONFIG = {
       { id: 'local', label: 'LOCAL 2 PLAYER', humanPlayers: 2, minBots: 0, maxBots: 0, defaultBots: 0 },
       { id: 'duoBots', label: '2 PLAYERS + BOTS', humanPlayers: 2, minBots: 1, maxBots: 3, defaultBots: 2 },
       { id: 'survival', label: 'SURVIVAL WAVES', humanPlayers: 1, minBots: 1, maxBots: 3, defaultBots: 3 },
+      { id: 'daily', label: t('mode.dailyChallenge'), humanPlayers: 1, minBots: 3, maxBots: 3, defaultBots: 3 },
+      { id: 'bestOf3', label: t('mode.bestOfThree'), humanPlayers: 1, minBots: 1, maxBots: 1, defaultBots: 1 },
     ] as const,
   },
   particles: {
@@ -278,7 +304,7 @@ export const CONFIG = {
   menu: {
     items: [
       { id: 'play', label: 'PLAY', available: true },
-      { id: 'campaign', label: 'CAMPAIGN', available: false },
+      { id: 'daily', label: t('mode.dailyChallenge'), available: true },
       { id: 'custom', label: 'CUSTOM GAME', available: true },
       { id: 'library', label: 'GUN LIBRARY', available: false },
       { id: 'options', label: 'OPTIONS', available: true },

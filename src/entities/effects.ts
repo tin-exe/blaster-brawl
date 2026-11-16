@@ -29,6 +29,8 @@ export class EffectSystem {
       const duration = lifetime * (0.55 + this.random() * 0.75);
       particle.x = x;
       particle.y = y;
+      particle.previousX = x;
+      particle.previousY = y;
       particle.vx = Math.cos(angle) * velocity;
       particle.vy = Math.sin(angle) * velocity - speed * 0.12;
       particle.radius = 1.5 + this.random() * 4.5;
@@ -50,6 +52,8 @@ export class EffectSystem {
     this.activeCount += 1;
     particle.x = x;
     particle.y = y;
+    particle.previousX = x;
+    particle.previousY = y;
     particle.vx = 0;
     particle.vy = 0;
     particle.radius = startRadius;
@@ -78,6 +82,8 @@ export class EffectSystem {
   update(dt: number): void {
     for (const particle of this.pool.items) {
       if (!particle.active) continue;
+      particle.previousX = particle.x;
+      particle.previousY = particle.y;
       particle.life -= dt;
       if (particle.life <= 0) { particle.active = false; this.activeCount = Math.max(0, this.activeCount - 1); continue; }
       if (particle.ring) { particle.radius += particle.expansion * dt; continue; }

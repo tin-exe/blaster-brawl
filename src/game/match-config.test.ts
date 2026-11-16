@@ -10,6 +10,12 @@ describe('MatchConfig', () => {
     expect(createMatchConfig('survival')).toMatchObject({ mode: 'survival', humanPlayers: 1, botCount: 3 });
   });
 
+  it('keeps the daily challenge fixed regardless of custom-game overrides', () => {
+    const daily = createMatchConfig('daily', { difficulty: 'easy', stocks: 1, weaponsEnabled: false, botCount: 1 });
+    expect(daily).toMatchObject({ mode: 'daily', humanPlayers: 1, botCount: 3, difficulty: 'hard', stocks: 3, weaponsEnabled: true });
+    expect(adjustMatchConfig(daily, 'stocks', -1)).toEqual(daily);
+  });
+
   it('clamps stocks and bot count to the selected mode limits', () => {
     expect(createMatchConfig('ffa', { stocks: 9, botCount: 8 })).toMatchObject({ stocks: 5, botCount: 3 });
     expect(createMatchConfig('local', { botCount: 2 })).toMatchObject({ botCount: 0, humanPlayers: 2 });

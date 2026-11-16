@@ -113,6 +113,17 @@ export class BotController {
 
   getStuckSeconds(id: Fighter['id']): number { return this.memory.get(id)?.stuck.seconds ?? 0; }
 
+  snapshot(): unknown[] {
+    const q = (value: number) => Math.round(value * 100_000);
+    return [...this.memory.entries()]
+      .sort(([first], [second]) => first < second ? -1 : first > second ? 1 : 0)
+      .map(([id, state]) => [
+        id, q(state.reactionRemaining), state.burstShots, q(state.burstPauseRemaining),
+        [state.action.move, state.action.jump, state.action.shoot, q(state.action.aimAngle), state.action.targetId ?? null],
+        [q(state.stuck.seconds), q(state.stuck.lastX), q(state.stuck.lastY), state.stuck.triggered],
+      ]);
+  }
+
   private planAction(context: BotContext, profile: ReturnType<typeof getDifficultyProfile>): BotAction {
     const { self, fighters, pickups, platforms, matchConfig, random } = context;
     const opponents = fighters.filter((fighter) => fighter.id !== self.id && !fighter.dead);

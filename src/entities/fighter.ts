@@ -66,12 +66,16 @@ export function createFighter(id: FighterId, spawn: SpawnPoint, settings: GameSe
     contactCooldown: 0,
     shieldTime: 0,
     overdriveTime: 0,
+    springTime: 0,
+    hazardCooldownTicks: 0,
   };
 }
 
 export function respawnFighter(fighter: Fighter, spawn: SpawnPoint): void {
   fighter.x = spawn.x;
   fighter.y = spawn.y;
+  fighter.previousX = spawn.x;
+  fighter.previousY = spawn.y;
   fighter.vx = 0;
   fighter.vy = 0;
   fighter.facing = fighter.x < CONFIG.world.width * 0.5 ? 1 : -1;
@@ -95,4 +99,6 @@ export function respawnFighter(fighter: Fighter, spawn: SpawnPoint): void {
   fighter.contactCooldown = 0;
   fighter.shieldTime = 0;
   fighter.overdriveTime = 0;
+  fighter.springTime = 0;
+  fighter.hazardCooldownTicks = 0;
 }

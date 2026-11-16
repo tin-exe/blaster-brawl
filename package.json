@@ -8,12 +8,18 @@
     "dev": "vite --host 127.0.0.1 --port 3000",
     "dev:host": "vite --host 0.0.0.0 --port 3000",
     "preview:host": "vite preview --host 0.0.0.0 --port 3000",
+    "typecheck": "tsc -b",
     "build": "tsc -b && vite build",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "perf:baseline": "node scripts/performance-baseline.mjs",
+    "scan:secrets": "node scripts/scan-secrets.mjs",
+    "check:bundle": "node scripts/check-bundle-size.mjs",
+    "test:cross-browser": "node scripts/cross-browser-determinism.mjs"
   },
   "devDependencies": {
     "@types/node": "22.15.30",
+    "playwright": "1.65.1",
     "typescript": "5.8.3",
     "vite": "6.4.5",
     "vitest": "4.1.12"
