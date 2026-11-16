@@ -14,6 +14,8 @@ import { loadSettings, saveSettings, type GameSettings } from './storage/setting
 import { TouchControls } from './ui/touch/touch-controls';
 import { mergeTouchInput } from './ui/touch/touch-input';
 import { shouldLowerQuality } from './game/quality';
+import { completeTutorial, loadProgression, recordLocalWin, saveProgression, type LocalProgression } from './storage/progression';
+import { saveReplayClip } from './storage/replays';
 import type { InputFrame, MatchConfig } from './types';
 
 function requiredElement<T extends HTMLElement>(id: string): T {
@@ -52,6 +54,8 @@ let customIndex = 0;
 let customConfig: MatchConfig = DEFAULT_MATCH_CONFIG;
 let lastMatchConfig: MatchConfig = DEFAULT_MATCH_CONFIG;
 let bestOfThreeSeries: BestOfThreeSeries | null = null;
+let progression: LocalProgression = loadProgression();
+let tutorialActive = false;
 let optionsIndex = 0;
 let gameOverIndex = 0;
 let pauseIndex = 0;
@@ -214,6 +218,7 @@ function startGame(config: MatchConfig = lastMatchConfig, continueSeries = false
     sceneEvents.emit(SCENE_EVENTS.GAME_OVER, winner);
   });
   screen = SCENE.GAME;
+  tutorialActive = !progression.tutorialComplete;
   paused = false;
   gameOverIndex = 0;
   pauseIndex = 0;
@@ -261,6 +266,12 @@ sceneEvents.on(SCENE_EVENTS.GAME_OVER, (winnerId) => {
     const winningFighter = match.fighters.find((fighter) => fighter.id === winnerId);
     bestOfThreeSeries.recordRound(winningFighter?.playerSlot === 1 ? 1 : 2);
   }
+  if (match) saveReplayClip(match.replayClip());
+  const winningFighter = match?.fighters.find((fighter) => fighter.id === winnerId);
+  if (winningFighter?.playerSlot === 1) {
+    progression = recordLocalWin(progression);
+    saveProgression(progression);
+  }
   screen = SCENE.GAME_OVER;
   paused = false;
   gameOverIndex = 0;
@@ -293,6 +304,7 @@ function updateMenu(frame: InputFrame): void {
   if (!selected) return;
   audio.play('menu');
   if (selected.id === 'play') sceneEvents.emit(SCENE_EVENTS.START_GAME, DEFAULT_MATCH_CONFIG);
+  else if (selected.id === 'practice') sceneEvents.emit(SCENE_EVENTS.START_GAME, createMatchConfig('practice', { difficulty: 'easy' }));
   else if (selected.id === 'daily') sceneEvents.emit(SCENE_EVENTS.START_GAME, createMatchConfig('daily'));
   else if (selected.id === 'options') screen = SCENE.OPTIONS;
   else if (selected.id === 'custom') {
@@ -521,25 +533,35 @@ function loop(now: number): void {
   else if (screen === SCENE.CUSTOM) updateCustomGame(frame);
   else if (screen === SCENE.GAME_OVER) updateGameOver(frame);
   else if (screen === SCENE.GAME) {
-    if (!paused && frame.pausePressed) paused = true;
-    else if (paused) updatePause(frame);
-    if (!paused && screen === SCENE.GAME && match) {
-      let tickFrame = tickInputSampler.sample(frame);
-      accumulator = Math.min(accumulator + delta, stepSeconds * CONFIG.canvas.maxCatchUpSteps);
-      let steps = 0;
-      while (accumulator >= stepSeconds && steps < CONFIG.canvas.maxCatchUpSteps) {
-        match.update(stepSeconds, tickFrame);
-        tickInputSampler.consumeTick();
-        accumulator -= stepSeconds;
-        steps += 1;
-        tickFrame = clearOneShotInputEdges(tickFrame);
-        if (match.finished) {
-          break;
-        }
+    if (tutorialActive) {
+      if (frame.menuAccept || frame.pointerPressed) {
+        progression = completeTutorial(progression);
+        saveProgression(progression);
+        tutorialActive = false;
       }
-    } else {
       accumulator = 0;
       tickInputSampler.clear();
+    } else {
+      if (!paused && frame.pausePressed) paused = true;
+      else if (paused) updatePause(frame);
+      if (!paused && screen === SCENE.GAME && match) {
+        let tickFrame = tickInputSampler.sample(frame);
+        accumulator = Math.min(accumulator + delta, stepSeconds * CONFIG.canvas.maxCatchUpSteps);
+        let steps = 0;
+        while (accumulator >= stepSeconds && steps < CONFIG.canvas.maxCatchUpSteps) {
+          match.update(stepSeconds, tickFrame);
+          tickInputSampler.consumeTick();
+          accumulator -= stepSeconds;
+          steps += 1;
+          tickFrame = clearOneShotInputEdges(tickFrame);
+          if (match.finished) {
+            break;
+          }
+        }
+      } else {
+        accumulator = 0;
+        tickInputSampler.clear();
+      }
     }
   }
 
@@ -563,6 +585,7 @@ function loop(now: number): void {
     touchMode: touchControls.activeForPlayer,
     touchCapable: touchControls.isTouchDevice || settings.touchControlsEnabled,
     pointerDown: frame.pointerDown,
+    tutorialActive,
   };
   touchControls.setGameActive(screen === SCENE.GAME);
   renderGame(context, state);

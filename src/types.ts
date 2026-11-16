@@ -3,7 +3,7 @@ import type { WeaponId } from './config';
 export type FighterId = 'human' | 'player2' | 'bot' | 'bot2' | 'bot3';
 export type FighterController = 'human' | 'bot';
 export type DifficultyLevel = 'easy' | 'normal' | 'hard';
-export type MatchMode = 'versus' | 'ffa' | 'local' | 'duoBots' | 'survival' | 'daily' | 'bestOf3';
+export type MatchMode = 'versus' | 'practice' | 'ffa' | 'local' | 'duoBots' | 'survival' | 'daily' | 'bestOf3';
 export type PowerUpId = 'shield' | 'overdrive' | 'spring';
 export type MarkerShape = 'circle' | 'square' | 'triangle' | 'diamond' | 'star';
 export type HatStyle = 'cap' | 'cowboy' | 'crown';

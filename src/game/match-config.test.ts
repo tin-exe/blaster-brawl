@@ -4,6 +4,7 @@ import { adjustMatchConfig, createMatchConfig, validateMatchConfig } from './mat
 describe('MatchConfig', () => {
   it('provides the reusable match and survival mode presets', () => {
     expect(createMatchConfig('versus')).toMatchObject({ mode: 'versus', humanPlayers: 1, botCount: 1 });
+    expect(createMatchConfig('practice', { difficulty: 'easy' })).toMatchObject({ mode: 'practice', humanPlayers: 1, botCount: 1, difficulty: 'easy' });
     expect(createMatchConfig('ffa')).toMatchObject({ mode: 'ffa', humanPlayers: 1, botCount: 3 });
     expect(createMatchConfig('local')).toMatchObject({ mode: 'local', humanPlayers: 2, botCount: 0 });
     expect(createMatchConfig('duoBots')).toMatchObject({ mode: 'duoBots', humanPlayers: 2, botCount: 2 });

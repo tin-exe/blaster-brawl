@@ -29,6 +29,7 @@ export interface RenderState {
   touchMode: boolean;
   touchCapable: boolean;
   pointerDown: boolean;
+  tutorialActive: boolean;
 }
 
 const INK = '#172137';
@@ -675,6 +676,7 @@ function drawMenu(ctx: CanvasRenderingContext2D, state: RenderState): void {
   const y = 180;
   const hints: Record<string, string> = {
     play: 'QUICK 1V1 · STARTS NOW',
+    practice: t('menu.practiceHint'),
     daily: t('menu.dailyHint'),
     campaign: 'A STORY RUN IS COMING SOON',
     custom: 'CHOOSE THE RULES OF THE BRAWL',
@@ -780,6 +782,18 @@ function drawPause(ctx: CanvasRenderingContext2D, state: RenderState): void {
   text(ctx, 'ESC RESUMES', CONFIG.canvas.width * 0.5, 379, 11, '#c7d3df', 'center', 3, 800);
 }
 
+function drawTutorial(ctx: CanvasRenderingContext2D): void {
+  ctx.fillStyle = 'rgba(10,16,29,0.7)';
+  ctx.fillRect(0, 0, CONFIG.canvas.width, CONFIG.canvas.height);
+  panel(ctx, 178, 102, 604, 328, 'rgba(22,31,50,0.98)');
+  text(ctx, t('tutorial.title'), CONFIG.canvas.width * 0.5, 149, 30, '#ffe16b', 'center', 6, 1000);
+  text(ctx, t('tutorial.objective'), CONFIG.canvas.width * 0.5, 198, 18, '#fff8df', 'center', 4, 950);
+  text(ctx, t('tutorial.controls'), CONFIG.canvas.width * 0.5, 242, 13, '#dce6ec', 'center', 3, 850);
+  text(ctx, t('tutorial.secondary'), CONFIG.canvas.width * 0.5, 272, 13, '#dce6ec', 'center', 3, 850);
+  text(ctx, t('tutorial.tip'), CONFIG.canvas.width * 0.5, 316, 12, '#ffe16b', 'center', 3, 850);
+  text(ctx, t('tutorial.start'), CONFIG.canvas.width * 0.5, 376, 17, '#ff806c', 'center', 4, 1000);
+}
+
 function drawGameOver(ctx: CanvasRenderingContext2D, state: RenderState): void {
   const winner = state.match?.winnerFighter ?? null;
   const won = winner?.playerSlot === 1;
@@ -864,6 +878,7 @@ export function renderGame(ctx: CanvasRenderingContext2D, state: RenderState): v
   else if (state.screen === SCENE.CUSTOM) drawCustomGame(ctx, state);
   else if (state.screen === SCENE.GAME && state.paused) drawPause(ctx, state);
   else if (state.screen === SCENE.GAME_OVER) drawGameOver(ctx, state);
+  if (state.screen === SCENE.GAME && state.tutorialActive) drawTutorial(ctx);
   if (state.toastTimer > 0 && state.toast && state.screen !== SCENE.GAME) {
     panel(ctx, CONFIG.canvas.width * 0.5 - 190, 29, 380, 45, 'rgba(255,225,107,0.92)');
     text(ctx, state.toast, CONFIG.canvas.width * 0.5, 52, 14, INK, 'center', 2, 950);

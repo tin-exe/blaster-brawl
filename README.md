@@ -50,7 +50,7 @@ The setup screen also selects Easy/Normal/Hard bot difficulty, 1–5 stocks, and
 | Switch weapon | K | Right Shift |
 | Pause / resume | Esc (pauses both players) | Esc (pauses both players) |
 
-Use ↑/↓ or W/S to navigate menus, Enter/Space to activate, and ←/→ to change a selected Custom Game or Options value. Matches use the pistol, shotgun, rocket launcher, and piercing railgun, each with different cadence, force, recoil and ammunition. Weapon pickups respawn, while eliminated bots can drop temporary power-ups.
+Use ↑/↓ or W/S to navigate menus, Enter/Space to activate, and ←/→ to change a selected Custom Game or Options value. **Practice** starts an easy 1v1 and uses the same restart flow for quick resets. Matches use the pistol, shotgun, rocket launcher, and piercing railgun, each with different cadence, force, recoil and ammunition. Weapon pickups respawn, while eliminated bots can drop temporary power-ups.
 
 An attached gamepad also controls Player 1: left stick/D-pad to move, A (button 0) to jump/confirm, right trigger or X to shoot, Y to switch weapon, Start to pause, and B to go back. Keyboard or gamepad input hides the touch overlay; the next touch restores it on touch-capable devices.
 
@@ -74,7 +74,7 @@ Use the manual mobile checklist in [`QA_CHECKLIST.md`](./QA_CHECKLIST.md). No re
 
 ## Configuration and structure
 
-`src/config.ts` is the sole gameplay/presentation tuning source: title, dimensions, controls, arena/spawns, stocks, movement, weapons, pickups, bot difficulty values, particles, audio synthesis, performance thresholds, UI copy and settings defaults. It also supplies simulation/balance values used to compute the local `rulesetHash`; the fingerprint is compatibility metadata, not a cryptographic signature or anti-cheat proof. Daily seeds combine that hash with the UTC date. There is no replay recording, online leaderboard, server ticket or persistent best-of-three result yet. In particular, each AI profile exposes reaction delay, imperfect aim/error, burst/spray cadence, bullet/rocket dodge probability, pickup priority, perception range and stuck timeout. Do not scatter balance values across systems.
+`src/config.ts` is the sole gameplay/presentation tuning source: title, dimensions, controls, arena/spawns, stocks, movement, weapons, pickups, bot difficulty values, particles, audio synthesis, performance thresholds, UI copy and settings defaults. It also supplies simulation/balance values used to compute the local `rulesetHash`; the fingerprint is compatibility metadata, not a cryptographic signature or anti-cheat proof. Daily seeds combine that hash with the UTC date. Replay clips are local-only, ruleset-tagged JSON; there is no online leaderboard, server ticket or verified competitive result. Local progression and recent replay clips use separate versioned, schema-validated storage keys. In particular, each AI profile exposes reaction delay, imperfect aim/error, burst/spray cadence, bullet/rocket dodge probability, pickup priority, perception range and stuck timeout. Do not scatter balance values across systems.
 
 - `src/main.ts` — loading/error handling, menu/custom/options/result states, touch and keyboard inputs, fixed 60 Hz simulation, lifecycle handling and adaptive graphics quality.
 - `src/engine/` — keyboard/pointer input, math helpers and fixed-capacity object pooling.
@@ -85,7 +85,7 @@ Use the manual mobile checklist in [`QA_CHECKLIST.md`](./QA_CHECKLIST.md). No re
 - `src/scenes/match.ts` and `src/entities/` — multi-fighter simulation, safe spawns/respawns, all-versus-all projectiles, pickups, effects, knockback and ring-outs.
 - `src/weapons/` — weapon definitions and firing behavior.
 - `src/render/renderer.ts` — procedural arena, fighters, labels/shape markers, roster HUD, offscreen arrows and menus.
-- `src/audio/` and `src/storage/` — user-gesture-gated Web Audio and validated settings persistence.
+- `src/audio/` and `src/storage/` — user-gesture-gated Web Audio, validated settings, local progression and bounded replay persistence.
 - `src/**/*.test.ts` — Vitest checks for settings, weapon behavior, AI decisions, configurations, match outcomes and seeded bot simulations.
 
 `public/manifest.webmanifest`, `public/sw.js` and `public/icons/` provide install metadata, offline shell caching and maskable PWA artwork. The supplied SVG icons reuse the game's original logo.

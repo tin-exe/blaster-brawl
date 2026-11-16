@@ -65,3 +65,12 @@
 - Verified: strict TypeScript check; 78/78 Vitest tests; production build; dependency audit (0 advisories); secret-pattern scan (89 files); bundle budgets; and six fixed-seed checkpoints matching between Node, Chromium, Firefox and WebKit.
 - Browser smoke: Daily Challenge launches and displays its date HUD; Best of Three can be selected from Custom Game and displays the round/score HUD. The pure series state machine tests early clinch, a tied third round, and clean rematch state.
 - Not verified: a full live multi-round Best of Three playthrough, screenshot-based visual parity, actual iOS/Android or low-end-device performance, public hosting/headers, or physical-device PWA behavior. These remain follow-up items rather than implied completion.
+
+### Task 5A continuation — tutorial, practice, progression and replay clips
+
+- [x] First-run tutorial gate with keyboard/tap briefing; completion is stored separately from settings.
+- [x] Practice Range menu entry launches an easy 1v1 and uses the existing restart flow for a clean reset.
+- [x] Local-only progression is versioned and schema-validated; wins unlock cosmetic IDs for skins, trails and titles without any verified/competitive label.
+- [x] Replay clips include seed, arena, config, tick range and `rulesetHash`; clips are shareable/downloadable and the five newest valid clips are stored under a separate versioned key.
+- [x] Verification: 83/83 Vitest tests, strict typecheck, production build and `git diff --check` passed.
+- [ ] Not verified: visual/manual first-run tutorial walkthrough, real device share sheets, and replay playback (clips are captured/exported metadata; a playback viewer remains future work).

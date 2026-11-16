@@ -197,6 +197,7 @@ export const CONFIG = {
     unarmedBumpCooldown: 0.38,
     modes: [
       { id: 'versus', label: '1V1 VS BOT', humanPlayers: 1, minBots: 1, maxBots: 1, defaultBots: 1 },
+      { id: 'practice', label: t('mode.practice'), humanPlayers: 1, minBots: 1, maxBots: 1, defaultBots: 1 },
       { id: 'ffa', label: 'FREE-FOR-ALL', humanPlayers: 1, minBots: 1, maxBots: 3, defaultBots: 3 },
       { id: 'local', label: 'LOCAL 2 PLAYER', humanPlayers: 2, minBots: 0, maxBots: 0, defaultBots: 0 },
       { id: 'duoBots', label: '2 PLAYERS + BOTS', humanPlayers: 2, minBots: 1, maxBots: 3, defaultBots: 2 },
@@ -304,6 +305,7 @@ export const CONFIG = {
   menu: {
     items: [
       { id: 'play', label: 'PLAY', available: true },
+      { id: 'practice', label: 'PRACTICE', available: true },
       { id: 'daily', label: t('mode.dailyChallenge'), available: true },
       { id: 'custom', label: 'CUSTOM GAME', available: true },
       { id: 'library', label: 'GUN LIBRARY', available: false },
