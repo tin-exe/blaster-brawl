@@ -828,6 +828,7 @@ function drawGameOver(ctx: CanvasRenderingContext2D, state: RenderState): void {
       : i === CONFIG.scene.gameOverActionIndex.menu && inSeries ? t('series.backToMenu') : items[i] ?? '';
     text(ctx, label, 388, y + (i === state.gameOverIndex && state.pointerDown ? 2 : 0), 20, '#fff', 'left', 4, 950);
   }
+  text(ctx, 'S  SHARE LOCAL REPLAY CLIP', CONFIG.canvas.width * 0.5, 425, 10, '#c7d3df', 'center', 2, 800);
 }
 
 export function renderGame(ctx: CanvasRenderingContext2D, state: RenderState): void {

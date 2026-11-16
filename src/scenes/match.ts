@@ -16,6 +16,7 @@ import type { BotAction, Fighter, FighterId, InputFrame, MatchConfig, Pickup, Pl
 import type { GameSettings } from '../storage/settings';
 import { createMatchConfig, DEFAULT_MATCH_CONFIG } from '../game/match-config';
 import { GAME_CONTENT, isHazardActiveAtTick, RULESET_HASH, SAFE_DEFAULT_ARENA, VALID_ARENAS } from '../game/content';
+import { createReplayClip, type ReplayClip } from '../game/replay';
 import { t } from '../i18n';
 import { SceneEventEmitter } from './events';
 import type { ArenaDefinition } from '../types';
@@ -128,6 +129,17 @@ export class MatchScene {
       this.config.weaponsEnabled, this.arena.id, this.challengeDate, this.rulesetHash, this.wave, this.winner, this.finished,
       this.eliminationOrder, fighters, projectiles, pickups, this.botController.snapshot(),
     ]);
+  }
+
+  replayClip(): ReplayClip {
+    return createReplayClip({
+      gameVersion: CONFIG.version,
+      rulesetHash: this.rulesetHash,
+      seed: this.seed,
+      arenaId: this.arena.id,
+      config: this.config,
+      inputLog: this.inputLog.snapshot(),
+    });
   }
 
   shutdown(): void {

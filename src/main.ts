@@ -6,6 +6,7 @@ import { DEFAULT_MATCH_SEED } from './engine/random';
 import { adjustMatchConfig, createMatchConfig, DEFAULT_MATCH_CONFIG } from './game/match-config';
 import { createDailyChallenge } from './game/daily-challenge';
 import { BestOfThreeSeries } from './game/best-of-three';
+import { shareReplayClip } from './game/replay';
 import { SceneEventEmitter } from './scenes/events';
 import { MatchScene } from './scenes/match';
 import { renderGame, type RenderState, type ScreenMode } from './render/renderer';
@@ -178,6 +179,14 @@ function setMenuToast(message: string): void {
   menuToast = message;
   menuToastTimer = CONFIG.hud.toastSeconds;
 }
+
+window.addEventListener('keydown', (event) => {
+  if (screen !== SCENE.GAME_OVER || event.code !== 'KeyS' || !match) return;
+  event.preventDefault();
+  void shareReplayClip(match.replayClip())
+    .then((result) => setMenuToast(result === 'shared' ? 'REPLAY CLIP READY TO SHARE.' : 'REPLAY CLIP DOWNLOADED.'))
+    .catch(() => setMenuToast('REPLAY CLIP COULD NOT BE SHARED.'));
+});
 
 function createMatchSeed(): number {
   if (typeof globalThis.crypto === 'undefined') return DEFAULT_MATCH_SEED;
