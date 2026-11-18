@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createReplayClip, encodeReplayClip, validateReplayClip } from './replay';
+import { createReplayClip, encodeReplayClip, replayInputAtTick, validateReplayClip } from './replay';
 import { DEFAULT_MATCH_CONFIG } from './match-config';
 
 const inputLog = {
@@ -32,5 +32,17 @@ describe('local replay clips', () => {
     expect(validateReplayClip({ ...clip, frames: new Array(60 * 180 * 16 + 16).fill(0), firstTick: 1, lastTick: 10801 })).toBe(false);
     expect(validateReplayClip({ ...clip, frames: [0], firstTick: 1, lastTick: 1 })).toBe(false);
     expect(validateReplayClip({ ...clip, config: { ...clip.config, stocks: 99 } })).toBe(false);
+  });
+
+  it('decodes both players and returns null outside the recorded tick range', () => {
+    const clip = createReplayClip({ gameVersion: 1, rulesetHash: 'x', seed: 1, arenaId: 'meadow', config: DEFAULT_MATCH_CONFIG, inputLog });
+    expect(replayInputAtTick(clip, 1)).toMatchObject({
+      right: true,
+      jumpPressed: true,
+      jumpHeld: true,
+      player2: { left: true, shoot: true },
+    });
+    expect(replayInputAtTick(clip, 0)).toBeNull();
+    expect(replayInputAtTick(clip, 3)).toBeNull();
   });
 });

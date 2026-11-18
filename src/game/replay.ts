@@ -1,8 +1,21 @@
-import type { MatchConfig } from '../types';
+import type { InputFrame, MatchConfig, PlayerInput } from '../types';
 import { DEFAULT_INPUT_LOG_TICKS, type InputLogSnapshot } from '../engine/input-log';
 import { validateMatchConfig } from './match-config';
 
 const INPUTS_PER_TICK = 16;
+
+function readPlayer(frames: readonly number[], offset: number): PlayerInput {
+  return {
+    left: frames[offset] === 1,
+    right: frames[offset + 1] === 1,
+    leftPressed: frames[offset + 2] === 1,
+    rightPressed: frames[offset + 3] === 1,
+    jumpPressed: frames[offset + 4] === 1,
+    jumpHeld: frames[offset + 5] === 1,
+    shoot: frames[offset + 6] === 1,
+    switchPressed: frames[offset + 7] === 1,
+  };
+}
 
 export interface ReplayClip {
   schemaVersion: 1;
@@ -66,6 +79,25 @@ export function validateReplayClip(value: unknown): value is ReplayClip {
     && candidate.frames.length <= DEFAULT_INPUT_LOG_TICKS * INPUTS_PER_TICK
     && candidate.frames.length === (lastTick - firstTick + 1) * INPUTS_PER_TICK
     && candidate.frames.every((frame) => Number.isInteger(frame) && frame >= 0 && frame <= 1);
+}
+
+export function replayInputAtTick(clip: ReplayClip, tick: number): InputFrame | null {
+  if (!validateReplayClip(clip) || !Number.isInteger(tick) || tick < clip.firstTick || tick > clip.lastTick) return null;
+  const offset = (tick - clip.firstTick) * INPUTS_PER_TICK;
+  return {
+    ...readPlayer(clip.frames, offset),
+    player2: readPlayer(clip.frames, offset + 8),
+    pausePressed: false,
+    menuUp: false,
+    menuDown: false,
+    menuAccept: false,
+    menuBack: false,
+    pointerX: 0,
+    pointerY: 0,
+    pointerPressed: false,
+    pointerDown: false,
+    pointerMoved: false,
+  };
 }
 
 export function downloadReplayClip(clip: ReplayClip): void {
