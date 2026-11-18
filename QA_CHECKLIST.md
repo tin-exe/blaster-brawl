@@ -11,6 +11,7 @@ This checklist distinguishes checks already performed in the managed Preview fro
 - [x] Automated tests cover roster sizes for all four modes, Player 2 movement, weapons-off pickups, FFA elimination/winner data, respawn invulnerability and deterministic four-fighter simulations on Easy/Normal/Hard.
 - [x] Automated replay coverage validates bounded/schema-safe clips, decodes both players by tick, and reproduces 30 recorded ticks with matching authoritative state hashes.
 - [x] `corepack pnpm test` and `corepack pnpm build` pass in the current source tree (see `TEST_REPORT.md`).
+- [x] Cross-browser determinism passes at six fixed-seed checkpoints in Node, Chromium, Firefox, and WebKit.
 
 ## Remaining hands-on game checks
 

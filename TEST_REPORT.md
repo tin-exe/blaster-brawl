@@ -27,6 +27,7 @@ Positive controls: CSP disallows inline script and `unsafe-eval`, disallows obje
 - `pnpm test` — **86 tests passed across 19 files**, including pointer-capture interruption recovery, bounded replay validation, match-config validation, per-tick replay decoding, and a 30-tick deterministic playback/state-hash comparison.
 - `pnpm typecheck` and `pnpm build` — passed.
 - Secret-pattern scan and bundle budgets — passed; JavaScript 110,455 bytes of 250,000 and CSS 6,827 bytes of 100,000.
+- `pnpm run test:cross-browser` — **passed**; six fixed-seed checkpoints matched across Node, Chromium, Firefox, and WebKit after installing the required browser runtimes and Linux dependencies.
 - Replay playback remains a tested deterministic foundation, not an in-game viewer. Physical-device share sheets, iOS/Android behavior, and public-host headers remain unverified.
 
 - **Conditional framing policy:** deployment CSP allows framing by `*.manus.computer`, `*.manus.im` and `*.manus.com` as well as self. Keep that only if Manus embedding is required; otherwise narrow it to the exact trusted origin(s) or `frame-ancestors 'none'`.

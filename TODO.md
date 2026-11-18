@@ -73,4 +73,5 @@
 - [x] Replay clips include seed, arena, config, tick range and `rulesetHash`; clips are shareable/downloadable and the five newest valid clips are stored under a separate versioned key.
 - [x] Verification: 86/86 Vitest tests, strict typecheck, production build, secret scan, bundle budgets and `git diff --check` passed.
 - [x] Replay foundation: imported clips are bounded and schema/config validated; `replayInputAtTick()` decodes both players and a 30-tick seeded playback test matches authoritative state hashes.
+- [x] Cross-browser continuation: six fixed-seed checkpoints match across Node, Chromium, Firefox, and WebKit.
 - [ ] Not verified: visual/manual first-run tutorial walkthrough, real device share sheets, and the in-game replay playback viewer. Clips are captured/exported metadata; the decoder is ready for a future viewer.
