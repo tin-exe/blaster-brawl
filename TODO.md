@@ -67,10 +67,10 @@
 - Not verified: a full live multi-round Best of Three playthrough, screenshot-based visual parity, actual iOS/Android or low-end-device performance, public hosting/headers, or physical-device PWA behavior. These remain follow-up items rather than implied completion.
 
 ### Task 5A continuation — tutorial, practice, progression and replay clips
-
 - [x] First-run tutorial gate with keyboard/tap briefing; completion is stored separately from settings.
 - [x] Practice Range menu entry launches an easy 1v1 and uses the existing restart flow for a clean reset.
 - [x] Local-only progression is versioned and schema-validated; wins unlock cosmetic IDs for skins, trails and titles without any verified/competitive label.
 - [x] Replay clips include seed, arena, config, tick range and `rulesetHash`; clips are shareable/downloadable and the five newest valid clips are stored under a separate versioned key.
-- [x] Verification: 83/83 Vitest tests, strict typecheck, production build and `git diff --check` passed.
-- [ ] Not verified: visual/manual first-run tutorial walkthrough, real device share sheets, and replay playback (clips are captured/exported metadata; a playback viewer remains future work).
+- [x] Verification: 86/86 Vitest tests, strict typecheck, production build, secret scan, bundle budgets and `git diff --check` passed.
+- [x] Replay foundation: imported clips are bounded and schema/config validated; `replayInputAtTick()` decodes both players and a 30-tick seeded playback test matches authoritative state hashes.
+- [ ] Not verified: visual/manual first-run tutorial walkthrough, real device share sheets, and the in-game replay playback viewer. Clips are captured/exported metadata; the decoder is ready for a future viewer.

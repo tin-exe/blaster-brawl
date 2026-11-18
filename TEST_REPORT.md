@@ -22,6 +22,13 @@ Positive controls: CSP disallows inline script and `unsafe-eval`, disallows obje
 
 ## Residual deployment checks
 
+## Current continuation verification
+
+- `pnpm test` — **86 tests passed across 19 files**, including pointer-capture interruption recovery, bounded replay validation, match-config validation, per-tick replay decoding, and a 30-tick deterministic playback/state-hash comparison.
+- `pnpm typecheck` and `pnpm build` — passed.
+- Secret-pattern scan and bundle budgets — passed; JavaScript 110,455 bytes of 250,000 and CSS 6,827 bytes of 100,000.
+- Replay playback remains a tested deterministic foundation, not an in-game viewer. Physical-device share sheets, iOS/Android behavior, and public-host headers remain unverified.
+
 - **Conditional framing policy:** deployment CSP allows framing by `*.manus.computer`, `*.manus.im` and `*.manus.com` as well as self. Keep that only if Manus embedding is required; otherwise narrow it to the exact trusted origin(s) or `frame-ancestors 'none'`.
 - **Live response headers:** no public deployment exists in this review. Confirm the chosen host actually returns the configured CSP, HSTS and other headers over HTTPS; local Vite/Python preview does not prove provider behavior.
 - `dev:host` and `preview:host` bind all interfaces by design. Use on a trusted LAN only. Never expose the development server through a public tunnel.
