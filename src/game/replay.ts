@@ -1,5 +1,7 @@
 import type { MatchConfig } from '../types';
-import type { InputLogSnapshot } from '../engine/input-log';
+import { DEFAULT_INPUT_LOG_TICKS, type InputLogSnapshot } from '../engine/input-log';
+
+const INPUTS_PER_TICK = 16;
 
 export interface ReplayClip {
   schemaVersion: 1;
@@ -60,6 +62,8 @@ export function validateReplayClip(value: unknown): value is ReplayClip {
     && lastTick >= firstTick
     && candidate.inputsPerPlayer === 8
     && Array.isArray(candidate.frames)
+    && candidate.frames.length <= DEFAULT_INPUT_LOG_TICKS * INPUTS_PER_TICK
+    && candidate.frames.length === (lastTick - firstTick + 1) * INPUTS_PER_TICK
     && candidate.frames.every((frame) => Number.isInteger(frame) && frame >= 0 && frame <= 1);
 }
 

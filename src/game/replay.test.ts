@@ -6,7 +6,7 @@ const inputLog = {
   firstTick: 1,
   lastTick: 2,
   inputsPerPlayer: 8,
-  frames: new Uint8Array([0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0]),
+  frames: new Uint8Array([0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0]),
 };
 
 describe('local replay clips', () => {
@@ -20,7 +20,7 @@ describe('local replay clips', () => {
       inputLog,
     });
 
-    expect(clip.frames).toHaveLength(16);
+    expect(clip.frames).toHaveLength(32);
     expect(validateReplayClip(JSON.parse(encodeReplayClip(clip)))).toBe(true);
     expect(clip.createdAt).toBe('2026-01-01T00:00:00.000Z');
   });
@@ -29,5 +29,7 @@ describe('local replay clips', () => {
     const clip = createReplayClip({ gameVersion: 1, rulesetHash: 'x', seed: 1, arenaId: 'meadow', config: DEFAULT_MATCH_CONFIG, inputLog });
     expect(validateReplayClip({ ...clip, frames: [0, 2] })).toBe(false);
     expect(validateReplayClip({ ...clip, lastTick: 0 })).toBe(false);
+    expect(validateReplayClip({ ...clip, frames: new Array(60 * 180 * 16 + 16).fill(0), firstTick: 1, lastTick: 10801 })).toBe(false);
+    expect(validateReplayClip({ ...clip, frames: [0], firstTick: 1, lastTick: 1 })).toBe(false);
   });
 });
