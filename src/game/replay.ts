@@ -1,5 +1,6 @@
 import type { MatchConfig } from '../types';
 import { DEFAULT_INPUT_LOG_TICKS, type InputLogSnapshot } from '../engine/input-log';
+import { validateMatchConfig } from './match-config';
 
 const INPUTS_PER_TICK = 16;
 
@@ -56,7 +57,7 @@ export function validateReplayClip(value: unknown): value is ReplayClip {
     && typeof candidate.rulesetHash === 'string' && candidate.rulesetHash.length > 0
     && Number.isInteger(candidate.seed)
     && typeof candidate.arenaId === 'string' && candidate.arenaId.length > 0
-    && typeof candidate.config === 'object' && candidate.config !== null
+    && validateMatchConfig(candidate.config)
     && typeof firstTick === 'number' && Number.isInteger(firstTick)
     && typeof lastTick === 'number' && Number.isInteger(lastTick)
     && lastTick >= firstTick

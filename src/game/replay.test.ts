@@ -31,5 +31,6 @@ describe('local replay clips', () => {
     expect(validateReplayClip({ ...clip, lastTick: 0 })).toBe(false);
     expect(validateReplayClip({ ...clip, frames: new Array(60 * 180 * 16 + 16).fill(0), firstTick: 1, lastTick: 10801 })).toBe(false);
     expect(validateReplayClip({ ...clip, frames: [0], firstTick: 1, lastTick: 1 })).toBe(false);
+    expect(validateReplayClip({ ...clip, config: { ...clip.config, stocks: 99 } })).toBe(false);
   });
 });
