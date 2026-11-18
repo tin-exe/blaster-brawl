@@ -35,7 +35,7 @@
 ## Security review follow-up
 
 - [x] Upgrade the vulnerable Vite/Vitest development toolchain, reduce default dev-server exposure, restrict production CSP network sources, disable published source maps, and make blocked `localStorage` access fail safely.
-- [x] Run dependency audit (0 advisories), production build, and all 42 tests; inspect the built app in a browser console and confirm its same-origin resources and active service worker.
+- [x] Run dependency audit, production build, and all 86 tests; the audit passes with only the documented unfixed `GHSA-fc5q-39xc-vjpf` picomatch advisory ignored, and the built app was inspected in a browser console for same-origin resources and an active service worker.
 - [ ] Before release, verify headers on the actual HTTPS host and narrow the Manus wildcard `frame-ancestors` list if those embedding origins are not all required. No deployment or public-host test is claimed.
 
 

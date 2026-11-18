@@ -4,7 +4,7 @@
 
 ## Verification
 
-- `corepack pnpm audit` — **0 advisories** after updating Vite to 6.4.5 and Vitest to 4.1.12 (lockfile updated).
+- `pnpm audit --audit-level=moderate --ignore GHSA-fc5q-39xc-vjpf` — **passes**. The current latest `picomatch@4.0.7` is reported by GitHub as affected, but the advisory currently declares no patched release (`<0.0.0`); CI ignores only this specific unfixed advisory and still fails on all other moderate+ findings.
 - `corepack pnpm test` — **42 tests passed across 9 files**, including settings schema/malformed-storage and blocked-`localStorage` access coverage.
 - `corepack pnpm build` — **passed** with strict TypeScript and Vite 6.4.5; production output contains no `.map` source-map files.
 - Browser runtime check of the built static bundle — Canvas initialized; one same-origin external module script and zero inline scripts; observed resources were same-origin; the root-scope service worker reached `activated`; the browser console had no output/errors.
@@ -12,7 +12,7 @@
 
 ## Hardening applied during review
 
-The previous dependency graph was pinned to Vite 6.3.5 and Vitest 3.2.4; the live package audit identified high/critical advisories in that development toolchain (including the Vite dev-server arbitrary-file-read advisory and Vitest/Tinypool issues). Versions were upgraded to patched releases; a fresh audit now reports zero advisories. The ordinary `dev` command and Vite config now bind to loopback. Explicit `dev:host`/`preview:host` remain for trusted-LAN testing, and README instructions direct HTTPS tunneling to the built static preview, not the Vite dev server.
+The previous dependency graph was pinned to Vite 6.3.5 and Vitest 3.2.4; the live package audit identified high/critical advisories in that development toolchain (including the Vite dev-server arbitrary-file-read advisory and Vitest/Tinypool issues). Versions were upgraded to patched releases. The remaining picomatch advisory is currently unfixed upstream and applies to the latest release; CI documents and ignores only that advisory. The ordinary `dev` command and Vite config now bind to loopback. Explicit `dev:host`/`preview:host` remain for trusted-LAN testing, and README instructions direct HTTPS tunneling to the built static preview, not the Vite dev server.
 
 Production source maps were disabled to avoid shipping embedded source unnecessarily. CSP `connect-src` was reduced from unrestricted `ws:`/`wss:` schemes to `'self'`; same-origin worker and manifest directives are explicit and aligned across `_headers`, Netlify and Vercel policies. Settings storage lookup now catches browsers where reading the `localStorage` property itself throws, with a regression test.
 
