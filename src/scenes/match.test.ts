@@ -3,6 +3,7 @@ import { AudioManager } from '../audio/audio';
 import { CONFIG, SCENE_EVENTS } from '../config';
 import { createMatchConfig } from '../game/match-config';
 import { runSeededCheckpointScenario } from '../game/determinism-scenario';
+import { replayInputAtTick } from '../game/replay';
 import { defaultSettings } from '../storage/settings';
 import type { InputFrame, MatchConfig } from '../types';
 import { getDifficultyProfile } from '../ai/difficulty';
@@ -253,6 +254,24 @@ describe('headless bot-vs-bot simulations', () => {
 });
 
 describe('seeded simulation checkpoints', () => {
+  it('replays recorded inputs into an identical seeded match', () => {
+    const recorded = new MatchScene(defaultSettings(), new AudioManager(true), createMatchConfig('versus', { weaponsEnabled: false }), { seed: 0x45a1 });
+    const recordedHashes: string[] = [];
+    for (let tick = 0; tick < 30; tick += 1) {
+      recorded.update(step, neutralInput);
+      recordedHashes.push(recorded.stateHash());
+    }
+    const clip = recorded.replayClip();
+    const playback = new MatchScene(defaultSettings(), new AudioManager(true), clip.config, { seed: clip.seed });
+
+    for (let tick = clip.firstTick; tick <= clip.lastTick; tick += 1) {
+      const input = replayInputAtTick(clip, tick);
+      expect(input).not.toBeNull();
+      playback.update(step, input!);
+      expect(playback.stateHash(), `replay diverged at tick ${tick}`).toBe(recordedHashes[tick - clip.firstTick]);
+    }
+  });
+
   it('matches checkpoint hashes for identical seeds and tick-indexed inputs', () => {
     const first = runSeededCheckpointScenario(0x51a7);
     const second = runSeededCheckpointScenario(0x51a7);
