@@ -78,7 +78,11 @@ export class InputController {
     this.pointerPressed = true;
     this.pointerDown = true;
     this.pointerMoved = true;
-    this.canvas.setPointerCapture?.(event.pointerId);
+    try {
+      this.canvas.setPointerCapture?.(event.pointerId);
+    } catch {
+      // Pointer capture is optional and can race with a cancelled touch.
+    }
   };
   private readonly onPointerUp = (): void => { this.pointerDown = false; };
   private readonly onContextMenu = (event: MouseEvent): void => { event.preventDefault(); };

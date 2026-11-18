@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { InputController } from './input';
 
-function makeInput(): { controller: InputController; windowListeners: Map<string, (...args: any[]) => void>; canvasListeners: Map<string, (...args: any[]) => void> } {
+function makeInput(): { controller: InputController; canvas: HTMLCanvasElement; windowListeners: Map<string, (...args: any[]) => void>; canvasListeners: Map<string, (...args: any[]) => void> } {
   const windowListeners = new Map<string, (...args: any[]) => void>();
   const canvasListeners = new Map<string, (...args: any[]) => void>();
   const fakeWindow = {
@@ -16,7 +16,7 @@ function makeInput(): { controller: InputController; windowListeners: Map<string
   } as unknown as HTMLCanvasElement;
   vi.stubGlobal('window', fakeWindow);
   vi.stubGlobal('navigator', { getGamepads: () => null });
-  return { controller: new InputController(canvas), windowListeners, canvasListeners };
+  return { controller: new InputController(canvas), canvas, windowListeners, canvasListeners };
 }
 
 afterEach(() => vi.unstubAllGlobals());
@@ -46,6 +46,15 @@ describe('keyboard and canvas pointer input', () => {
     expect(controller.frame()).toMatchObject({ pointerPressed: true, pointerDown: true, pointerMoved: true });
     windowListeners.get('pointerup')?.({} as PointerEvent);
     expect(controller.frame().pointerDown).toBe(false);
+    controller.destroy();
+  });
+
+  it('treats pointer capture rejection as a recoverable touch interruption', () => {
+    const { controller, canvas, canvasListeners } = makeInput();
+    vi.spyOn(canvas, 'setPointerCapture').mockImplementation(() => { throw new Error('no active pointer'); });
+
+    expect(() => canvasListeners.get('pointerdown')?.({ button: 0, pointerId: 7, clientX: 250, clientY: 100 } as PointerEvent)).not.toThrow();
+    expect(controller.frame()).toMatchObject({ pointerPressed: true, pointerDown: true });
     controller.destroy();
   });
 });
